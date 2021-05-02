@@ -1,11 +1,11 @@
-# account_balance.py
+# pp_account_balance.py
 import logging
-from typing import List
+from typing import List, Dict
 
 log = logging.getLogger('log')
 
 
-class SymbolBalance:
+class AssetBalance:
     def __init__(self, name: str, free: float = 0.0, locked: float = 0.0, tag='no tag', precision=6):
         self.name = name
         self.free = free
@@ -13,7 +13,7 @@ class SymbolBalance:
         self.tag = tag
         self.p = precision
 
-    def __add__(self, other: 'SymbolBalance'):
+    def __add__(self, other: 'AssetBalance'):
         name = ''
         tag = ''
         if self.name != other.name:
@@ -24,9 +24,9 @@ class SymbolBalance:
             tag = self.tag
         free = self.free + other.free
         locked = self.locked + other.locked
-        return SymbolBalance(name=name, free=free, locked=locked, tag=tag)
+        return AssetBalance(name=name, free=free, locked=locked, tag=tag)
 
-    def __sub__(self, other: 'SymbolBalance'):
+    def __sub__(self, other: 'AssetBalance'):
         name = ''
         tag = ''
         if self.name != other.name:
@@ -37,10 +37,23 @@ class SymbolBalance:
             tag = self.tag
         free = self.free - other.free
         locked = self.locked - other.locked
-        return SymbolBalance(name=name, free=free, locked=locked, tag=tag)
+        return AssetBalance(name=name, free=free, locked=locked, tag=tag)
 
     def get_total(self) -> float:
         return self.free + self.locked
+
+    def to_dict(self, symbol: str):
+        # comparing both to lowercase to do it case-insensitive
+        key = ''
+        if self.name.lower() == symbol[:3].lower():
+            key = 's1'
+        elif self.name.lower() == symbol[3:].lower():
+            key = 's2'
+        elif self.name.lower() == 'bnb':
+            key = 'bnb'
+        else:
+            log.critical(f'name not allowed in asset balance {self.print()}')
+        return {key: self}
 
     def log(self):
         balance = format(self.get_total(), f"12,.{self.p}f")
@@ -60,32 +73,31 @@ class SymbolBalance:
 
 
 class AccountBalance:
-    def __init__(self, sb_list: List[SymbolBalance]):
+    def __init__(self, d: Dict[str, AssetBalance]):
         # account balance
-        self.ab : List[SymbolBalance] = []
-        for sb in sb_list:
-            self.ab.append(sb)
+        self.s1 = d['s1']  # btc
+        self.s2 = d['s2']  # eur
+        self.bnb = d['bnb']
+
+    def get_free_price(self) -> float:
+        return self.s2.free
+
+    def get_free_amount(self) -> float:
+        return self.s1.free
 
     def __add__(self, other: 'AccountBalance') -> 'AccountBalance':
-        add: List[SymbolBalance] = []
-        if len(self.ab) != len(other.ab):
-            log.critical('error adding account balances with different symbols list:')
-            return self
-        else:
-            for sb in range(0, len(self.ab)):
-                add.append(self.ab[sb] + other.ab[sb])
-            return AccountBalance(sb_list=add)
+        s1 = self.s1 + other.s1
+        s2 = self.s2 + other.s2
+        bnb = self.bnb + other.bnb
+        return AccountBalance(d={'s1': s1, 's2': s2, 'bnb': bnb})
 
     def __sub__(self, other: 'AccountBalance') -> 'AccountBalance':
-        sub: List[SymbolBalance] = []
-        if len(self.ab) != len(other.ab):
-            log.critical('error subtracting account balances with different symbols list:')
-            return self
-        else:
-            for sb in range(0, len(self.ab)):
-                sub.append(self.ab[sb] - other.ab[sb])
-            return AccountBalance(sb_list=sub)
+        s1 = self.s1 - other.s1
+        s2 = self.s2 - other.s2
+        bnb = self.bnb - other.bnb
+        return AccountBalance(d=dict([('s1', s1), ('s2', s2), ('bnb', bnb)]))
 
     def log_print(self) -> None:
-        for symbol_balance in self.ab:
-            symbol_balance.log_print()
+        self.s1.log_print()
+        self.s2.log_print()
+        self.bnb.log_print()
