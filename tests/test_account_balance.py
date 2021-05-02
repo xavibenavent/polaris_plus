@@ -9,24 +9,27 @@ class TestAccountBalance(unittest.TestCase):
         self.sb_btc = AssetBalance(name='btc', free=1_000_000.0, locked=50_000.0, tag='initial')
         self.sb_bnb = AssetBalance(name='bnb', free=2_000_000.0, locked=80_000.0, tag='initial')
         self.sb_eur = AssetBalance(name='eur', free=10_000_000.0, locked=30_000.0, tag='initial', precision=2)
-        self.ab_initial = AccountBalance(d={'s1': self.sb_btc, 's2': self.sb_bnb, 'bnb': self.sb_eur})
+        self.ab_initial = AccountBalance(d={'s1': self.sb_btc, 'bnb': self.sb_bnb, 's2': self.sb_eur})
 
         self.sb_btc_2 = AssetBalance(name='btc', free=1_000_000.0, locked=50_000.0, tag='actual')
         self.sb_bnb_2 = AssetBalance(name='bnb', free=2_000_000.0, locked=80_000.0, tag='actual')
         self.sb_eur_2 = AssetBalance(name='eur', free=10_000_000.0, locked=30_000.0, tag='actual', precision=2)
-        self.ab_actual = AccountBalance(d={'s1': self.sb_btc, 's2': self.sb_bnb, 'bnb': self.sb_eur})
+        self.ab_actual = AccountBalance(d={'s1': self.sb_btc, 'bnb': self.sb_bnb, 's2': self.sb_eur})
 
     def test_add(self):
         ab_add = self.ab_initial + self.ab_actual
         self.assertEqual(100_000.0, ab_add.s1.locked)
-        self.assertEqual(4_160_000.0, ab_add.s2.get_total())
-        self.assertEqual(20_000_000.0, ab_add.bnb.free)
+        self.assertEqual(20_060_000.0, ab_add.s2.get_total())
+        self.assertEqual(4_000_000.0, ab_add.bnb.free)
 
     def test_sub(self):
         ab_add = self.ab_initial - self.ab_actual
         self.assertEqual(0.0, ab_add.s1.locked)
         self.assertEqual(0.0, ab_add.s2.get_total())
         self.assertEqual(0.0, ab_add.bnb.free)
+
+    def test_get_free_price_s2(self):
+        self.assertEqual(10_000_000.0, self.ab_initial.get_free_price_s2())
 
     def test_log_print(self):
         self.ab_initial.log_print()

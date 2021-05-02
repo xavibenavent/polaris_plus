@@ -79,10 +79,10 @@ class AccountBalance:
         self.s2 = d['s2']  # eur
         self.bnb = d['bnb']
 
-    def get_free_price(self) -> float:
+    def get_free_price_s2(self) -> float:
         return self.s2.free
 
-    def get_free_amount(self) -> float:
+    def get_free_amount_s1(self) -> float:
         return self.s1.free
 
     def __add__(self, other: 'AccountBalance') -> 'AccountBalance':
