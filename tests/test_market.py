@@ -13,7 +13,7 @@ class TestMarket(unittest.TestCase):
             symbol_ticker_callback=self.fake_symbol_ticker_callback,
             order_traded_callback=self.fake_order_traded_callback,
             account_balance_callback=self.fake_account_balance_callback,
-            client_mode='binance'
+            client_mode='simulated'
         )
         self.cmp = 0.0
         self.test_order_id = ''

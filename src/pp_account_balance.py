@@ -55,21 +55,14 @@ class AssetBalance:
             log.critical(f'name not allowed in asset balance {self.print()}')
         return {key: self}
 
-    def log(self):
-        balance = format(self.get_total(), f"12,.{self.p}f")
-        free = format(self.free, f"12,.{self.p}f")
-        locked = format(self.locked, f"12,.{self.p}f")
-        log.info(f'({self.tag}) [{self.name}]:    balance: {balance}   free: {free}   locked: {locked}')
-
-    def print(self):
-        balance = format(self.get_total(), f"12,.{self.p}f")
-        free = format(self.free, f"12,.{self.p}f")
-        locked = format(self.locked, f"12,.{self.p}f")
-        print(f'({self.tag}) [{self.name}]:    balance: {balance}   free: {free}   locked: {locked}')
+    def __repr__(self):
+        return (f'{self.tag:10} [{self.name}]:    '
+                f'balance: {self.get_total():15,.{self.p}f}  -  '
+                f'free: {self.free:15,.{self.p}f}  -  '
+                f'locked: {self.locked:15,.{self.p}f}')
 
     def log_print(self):
-        self.log()
-        self.print()
+        print(self)
 
 
 class AccountBalance:

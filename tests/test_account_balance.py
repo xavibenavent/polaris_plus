@@ -16,6 +16,8 @@ class TestAccountBalance(unittest.TestCase):
         self.sb_eur_2 = AssetBalance(name='eur', free=10_000_000.0, locked=30_000.0, tag='actual', precision=2)
         self.ab_actual = AccountBalance(d={'s1': self.sb_btc, 'bnb': self.sb_bnb, 's2': self.sb_eur})
 
+        print(self.sb_btc)
+
     def test_add(self):
         ab_add = self.ab_initial + self.ab_actual
         self.assertEqual(100_000.0, ab_add.s1.locked)
