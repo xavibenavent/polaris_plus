@@ -37,7 +37,7 @@ class Market:
         self.symbol_ticker_callback: Callable[[float], None] = symbol_ticker_callback
         self.order_traded_callback: Callable[[str, float, float], None] = order_traded_callback
         self.account_balance_callback: Callable[[AccountBalance], None] = account_balance_callback
-
+        self.client_mode = client_mode
         # symbol must be passed as argument o get from configuration file
         self.symbol = 'BTCEUR'
 
@@ -46,13 +46,15 @@ class Market:
 
         # create client depending on client_mode parameter
         self.client: Union[Client, SimulatedClient]
-        self.client, simulator_mode = self.set_client(client_mode)
+        self.client, self.simulator_mode = self.set_client(client_mode)
 
-        if not simulator_mode:
+        # self.start_sockets()
+
+    def start_sockets(self):
+        if not self.simulator_mode:
             # sockets only started in binance mode (not in simulator mode)
             self._start_sockets()
-
-        log.info(f'client initiated in {client_mode} mode')
+        log.info(f'client initiated in {self.client_mode} mode')
 
     # ********** callback functions **********
 
