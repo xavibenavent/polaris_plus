@@ -4,6 +4,7 @@ import sys
 import os
 import inspect
 import argparse
+import logging
 
 
 # Solution to include the project path to sys.path to avoid error
@@ -16,19 +17,20 @@ sys.path.insert(0, parentdir)
 
 from src.pp_market import Market
 from src.pp_session import Session
+from src.xb_logger import XBLogger
+from src.pp_climanager import CLIManager
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # setup command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--conf', type=str, required=True)
+    # parser.add_argument('--conf', type=str, required=False)
     parser.add_argument('--client_mode', type=str, required=False)
     arg = parser.parse_args()
 
-    # TODO: setup logger
-    # XBLogger()
-    # logger = logging.getLogger('log')
+    XBLogger()
+    log = logging.getLogger('log')
 
     # TODO: check whether it is a valid conf before creating session
     # if not _get_params_from_file(configuration=arg.conf):
@@ -41,17 +43,9 @@ if __name__ == '__main__':
     else:
         sys.exit(f'no valid client mode passed to main: {arg.client_mode}')
 
-    # TODO: create session
-    # session = Session(configuration=arg.conf, client_mode=client_mode)
-
-    # TODO: remove when session created
-    def st_callback(cmp: float):
-        print(cmp)
-
+    # create session
     session = Session(client_mode=client_mode)
 
-    print('configuration: ', arg.conf)
-    print('client_mode: ', client_mode)
-
     # TODO: create cli_manager
-    # cli_manager = XBCLIManager(session=session)
+    clim = CLIManager(session=session)
+    clim.start()

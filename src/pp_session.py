@@ -45,51 +45,7 @@ class Session:
         if self.is_initial_state_validated():
             self.market.start_sockets()
         else:
-            self.market.stop()
             sys.exit()
-
-    def is_initial_state_validated(self) -> bool:
-        allowed = False
-
-        print('\n********** INITIAL SANITY X-CHECK (ISOLATED ORDERS) **********')
-
-        print('\n********** pending orders LIST: (order status: MONITOR) **********')
-        for order in self.monitor:
-            print(order)
-
-        print('\n********** pending orders TABLE: **********')
-        for order in self.dbm.get_orders_from_table(table=PENDING_ORDERS_TABLE):
-            print(order)
-
-        print('\n********** active orders LIST: (order status: PLACED) **********')
-        for order in self.placed:
-            print(order)
-        print('          (it should be empty)')
-
-        print('\n********** traded orders TABLE: (order status: TRADED) **********')
-        for order in self.dbm.get_orders_from_table(table=TRADED_ORDERS_TABLE):
-            print(order)
-        print('          (it should be empty)')
-
-        user_input = input(f'\nvalidation needed before session start. is it ok? (y/n) ')
-        if user_input == 'y':
-            allowed = True
-
-        return allowed
-
-    def place_order(self, order) -> (bool,Optional[str]):
-        order_placed = False
-        status_received = None
-        # place order
-        d = self.market.place_order(order=order)
-        if d:
-            order_placed = True
-            order.set_binance_id(new_id=d.get('binance_id'))
-            status_received = d.get('status')
-            log.debug(d)
-        else:
-            log.critical(f'error placing {order}')
-        return order_placed, status_received
 
     # ********** socket callback functions **********
 
@@ -97,16 +53,8 @@ class Session:
         # 1. check conditions for new pt creation
         if self.is_new_pt_allowed():
             # 1. creation: (s: MONITOR, t: pending_orders, l: monitor)
-            # get parameters
-            dp = self.get_dynamic_parameters()
-            # create new orders
-            b1, s1 = self.get_new_pt(dynamic_parameters=dp)
-            # add orders to database
-            self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=b1)
-            self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=s1)
-            # add orders to list
-            self.monitor.append(b1)
-            self.monitor.append(s1)
+            # self.create_new_pt()
+            pass
 
         # 2. loop through monitoring orders and place to Binance when appropriate
         for order in self.monitor:
@@ -122,27 +70,34 @@ class Session:
                         if is_order_placed:
                             if new_status == 'NEW':
                                 # 2. placed: (s: PLACED, t: pending_orders, l: placed)
-                                # change status to PLACED
-                                # if the order has been FILLED, then the status
-                                # update to TRADED will be done through the
-                                # order_traded_callback
                                 order.set_status(status=OrderStatus.PLACED)
-                        else:
-                            log.critical(f'error placing order {order}')
                     else:
                         log.critical(f'error checking filters for {order}')
                 else:
-                    # release balance
                     self.release_balance(balance_needed=balance_needed)
                     log.critical(f'balance is not enough for placing {order}')
 
-        print(cmp)
+        # print(cmp)
 
     def order_traded_callback(self, order_id: str, order_price: float, bnb_commission: float) -> None:
-        pass
+        print(f'price: {order_price}  commission: {bnb_commission} [BNB]')
 
     def account_balance_callback(self, ab: AccountBalance) -> None:
         pass
+
+    def place_order(self, order) -> (bool,Optional[str]):
+        order_placed = False
+        status_received = None
+        # place order
+        d = self.market.place_order(order=order)
+        if d:
+            order_placed = True
+            order.set_binance_id(new_id=d.get('binance_id'))
+            status_received = d.get('status')
+            log.debug(d)
+        else:
+            log.critical(f'error placing {order}')
+        return order_placed, status_received
 
     def is_new_pt_allowed(self) -> bool:
         # TODO: implement it
@@ -151,6 +106,18 @@ class Session:
         #   2. cmp vs last created mp
         #   3. balance
         return True
+
+    def create_new_pt(self):
+        # get parameters
+        dp = self.get_dynamic_parameters()
+        # create new orders
+        b1, s1 = self.get_new_pt(dynamic_parameters=dp)
+        # add orders to database
+        self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=b1)
+        self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=s1)
+        # add orders to list
+        self.monitor.append(b1)
+        self.monitor.append(s1)
 
     def is_balance_enough(self, order: Order) -> (bool, Optional[float]):
         # if not enough balance, it returns the value of the balance needed
@@ -185,6 +152,10 @@ class Session:
         s1: Order
         return b1, s1
 
+    def quit(self):
+        # TODO: other actions (log them)
+        self.market.stop()
+
     @staticmethod
     def get_test_order() -> Order:
         order = Order(
@@ -206,3 +177,32 @@ class Session:
         except AttributeError as e:
             log.critical(e)
             sys.exit()
+
+    def is_initial_state_validated(self) -> bool:
+        allowed = False
+
+        print('\n********** INITIAL SANITY X-CHECK (ISOLATED ORDERS) **********')
+
+        print('\n********** pending orders LIST: (order status: MONITOR) **********')
+        for order in self.monitor:
+            print(order)
+
+        print('\n********** pending orders TABLE: **********')
+        for order in self.dbm.get_orders_from_table(table=PENDING_ORDERS_TABLE):
+            print(order)
+
+        print('\n********** active orders LIST: (order status: PLACED) **********')
+        for order in self.placed:
+            print(order)
+        print('          (it should be empty)')
+
+        print('\n********** traded orders TABLE: (order status: TRADED) **********')
+        for order in self.dbm.get_orders_from_table(table=TRADED_ORDERS_TABLE):
+            print(order)
+        print('          (it should be empty)')
+
+        user_input = input(f'\nvalidation needed before session start. is it ok? (y/n) ')
+        if user_input == 'y':
+            allowed = True
+
+        return allowed
