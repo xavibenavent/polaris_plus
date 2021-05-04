@@ -157,7 +157,7 @@ class Session:
         is_balance_enough = False
         balance_needed = None
         # TODO: implement it
-        # TODO: remove
+        # TODO: remove it
         is_balance_enough = True
         return is_balance_enough
 
