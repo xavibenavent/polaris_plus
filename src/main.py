@@ -32,10 +32,6 @@ if __name__ == '__main__':
     XBLogger()
     log = logging.getLogger('log')
 
-    # TODO: check whether it is a valid conf before creating session
-    # if not _get_params_from_file(configuration=arg.conf):
-    #     sys.exit(f'wrong configuration passed to main: {arg.conf}')
-
     # check whether it is a valid client mode
     accepted_client_modes = ['binance', 'simulated']
     if arg.client_mode in accepted_client_modes:
@@ -46,6 +42,5 @@ if __name__ == '__main__':
     # create session
     session = Session(client_mode=client_mode)
 
-    # TODO: create cli_manager
     clim = CLIManager(session=session)
     clim.start()

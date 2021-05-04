@@ -6,7 +6,7 @@ log = logging.getLogger('log')
 
 
 class AssetBalance:
-    def __init__(self, name: str, free: float = 0.0, locked: float = 0.0, tag='no tag', precision=6):
+    def __init__(self, name: str, free: float = 0.0, locked: float = 0.0, tag='no tag', precision=8):
         self.name = name
         self.free = free
         self.locked = locked
@@ -63,6 +63,7 @@ class AssetBalance:
 
     def log_print(self):
         print(self)
+        log.info(self)
 
 
 class AccountBalance:
@@ -80,17 +81,24 @@ class AccountBalance:
 
     def __add__(self, other: 'AccountBalance') -> 'AccountBalance':
         s1 = self.s1 + other.s1
+        s1.tag = 'add'
         s2 = self.s2 + other.s2
+        s2.tag = 'add'
         bnb = self.bnb + other.bnb
+        bnb.tag = 'add'
         return AccountBalance(d={'s1': s1, 's2': s2, 'bnb': bnb})
 
     def __sub__(self, other: 'AccountBalance') -> 'AccountBalance':
         s1 = self.s1 - other.s1
+        s1.tag = 'diff'
         s2 = self.s2 - other.s2
+        s2.tag = 'diff'
         bnb = self.bnb - other.bnb
+        bnb.tag = 'diff'
         return AccountBalance(d=dict([('s1', s1), ('s2', s2), ('bnb', bnb)]))
 
     def log_print(self) -> None:
+        print()
         self.s1.log_print()
         self.s2.log_print()
         self.bnb.log_print()

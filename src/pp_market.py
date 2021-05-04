@@ -2,7 +2,7 @@
 import pprint
 import sys
 import logging
-from typing import Callable, Union, Any, Optional
+from typing import Callable, Union, Any, Optional, List
 from twisted.internet import reactor
 from binance.client import Client
 from binance.websockets import BinanceSocketManager
@@ -82,9 +82,18 @@ class Market:
             # create dictionary from msg to use in account balance instantiation
             for item in balances:
                 # to avoid errors in case of having more assets
-                # TODO: do not use BNB in symbol because a known error would be raised
-                if item['a'] in [self.symbol[:3], self.symbol[3:], 'BNB']:
-                    ab = AssetBalance(name=item['a'], free=float(item['f']), locked=float(item['l']))
+                if item['a'] in ['BTC', 'EUR', 'BNB']:
+                    # set precision
+                    if item['a'] in ['BTC', 'BNB']:
+                        p = 8
+                    else:
+                        p = 2
+                    ab = AssetBalance(
+                        name=item['a'],
+                        free=float(item['f']),
+                        locked=float(item['l']),
+                        tag='current',
+                        precision=p)
                     d.update(ab.to_dict(symbol=self.symbol))
             account_balance = AccountBalance(d=d)
             self.account_balance_callback(account_balance)
@@ -154,6 +163,24 @@ class Market:
         except (BinanceAPIException, BinanceRequestException) as e:
             log.critical(e)
         return None
+
+    def get_asset_balance(self, asset: str, tag: str, p=8) -> AssetBalance:
+        try:
+            d = self.client.get_asset_balance(asset)
+            free = float(d.get('free'))
+            locked = float(d.get('locked'))
+            return AssetBalance(name=asset, free=free, locked=locked, tag=tag, precision=p)
+        except (BinanceAPIException, BinanceRequestException) as e:
+            log.critical(e)
+
+    def cancel_all_placed_orders(self, orders: List[Order]):
+        log.info('********** CANCELLING ALL PLACED ORDERS **********')
+        for order in orders:
+            try:
+                d = self.client.cancel_order(symbol='BTCEUR', origClientOrderId=order.uid)
+                log.info(f'{order} CANCELLED IN BINANCE')
+            except (BinanceAPIException, BinanceRequestException) as e:
+                log.critical(e)
 
     # ********** binance configuration methods **********
 

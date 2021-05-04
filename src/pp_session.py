@@ -1,6 +1,5 @@
 # pp_session.py
 import logging
-import pprint
 import sys
 
 from typing import List, Optional
@@ -10,6 +9,7 @@ from src.pp_market import Market
 from src.pp_account_balance import AccountBalance
 from src.pp_order import Order, OrderStatus
 from src.pp_dbmanager import DBManager
+from src.pp_account_balance import AccountBalance
 
 log = logging.getLogger('log')
 
@@ -30,6 +30,11 @@ class Session:
             client_mode=client_mode
         )
 
+        self.initial_ab = self.get_account_balance(tag='initial')
+        self.current_ab = self.get_account_balance(tag='current')
+        self.net_ab = self.current_ab - self.initial_ab
+        self.initial_ab.log_print()
+
         # create the database manager and fill pending orders list
         self.dbm = self.get_dbm()
         self.monitor: List[Order] \
@@ -46,6 +51,13 @@ class Session:
             self.market.start_sockets()
         else:
             sys.exit()
+
+    def get_account_balance(self, tag: str) -> AccountBalance:
+        btc_bal = self.market.get_asset_balance(asset='BTC', tag=tag)
+        eur_bal = self.market.get_asset_balance(asset='EUR', tag=tag, p=2)
+        bnb_bal = self.market.get_asset_balance(asset='BNB', tag=tag)
+        d = dict(s1=btc_bal, s2=eur_bal, bnb=bnb_bal)
+        return AccountBalance(d)
 
     # ********** socket callback functions **********
 
@@ -83,7 +95,11 @@ class Session:
         print(f'price: {order_price}  commission: {bnb_commission} [BNB]')
 
     def account_balance_callback(self, ab: AccountBalance) -> None:
-        pass
+        self.current_ab = ab
+        self.net_ab = ab - self.initial_ab
+        self.net_ab.s2.p = 2
+        print('********** ACCOUNT BALANCE UPDATE **********')
+        self.net_ab.log_print()
 
     def place_order(self, order) -> (bool,Optional[str]):
         order_placed = False
@@ -153,7 +169,19 @@ class Session:
         return b1, s1
 
     def quit(self):
-        # TODO: other actions (log them)
+        print('********** CANCELLING ALL PLACED ORDERS **********')
+        self.market.cancel_all_placed_orders(self.placed)
+
+        # check for correct cancellation of all orders
+        btc_bal = self.market.get_asset_balance(asset='BTC',
+                                                tag='check for zero locked')
+        eur_bal = self.market.get_asset_balance(asset='EUR',
+                                                tag='check for zero locked')
+        if btc_bal.locked != 0 or eur_bal.locked != 0:
+            log.critical('after cancellation of all orders, locked balance should be 0')
+            log.critical(btc_bal)
+            log.critical(eur_bal)
+
         self.market.stop()
 
     @staticmethod
