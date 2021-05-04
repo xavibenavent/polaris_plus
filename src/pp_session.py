@@ -76,6 +76,7 @@ class Session:
         if self.is_new_pt_allowed():
             # 1. creation: (s: MONITOR, t: pending_orders, l: monitor)
             self.create_new_pt(cmp=cmp)
+            input('type a key to continue...')
             pass
 
         # 2. loop through monitoring orders and place to Binance when appropriate
@@ -284,7 +285,8 @@ class Session:
             print(order)
 
         print('\n********** pending orders TABLE: **********')
-        for order in self.dbm.get_orders_from_table(table=PENDING_ORDERS_TABLE):
+        pending_orders_table = self.dbm.get_orders_from_table(table=PENDING_ORDERS_TABLE)
+        for order in pending_orders_table:
             print(order)
 
         print('\n********** active orders LIST: (order status: PLACED) **********')

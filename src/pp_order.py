@@ -53,8 +53,8 @@ class Order:
         else:
             self.uid = uid
 
-        print(self)
-        log.info(self)
+        print(f'** CREATED ** {self}')
+        log.info(f'** CREATED ++ {self}')
 
     def __del__(self):
         log.info(f'{self} OBJECT DESTROYED')
