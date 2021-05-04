@@ -10,6 +10,7 @@ from src.pp_account_balance import AccountBalance
 from src.pp_order import Order, OrderStatus
 from src.pp_dbmanager import DBManager
 from src.pp_account_balance import AccountBalance
+from src.xb_pt_calculator import get_pt_values
 
 log = logging.getLogger('log')
 
@@ -18,6 +19,15 @@ PENDING_ORDERS_TABLE = 'pending_orders'
 TRADED_ORDERS_TABLE = 'traded_orders'
 
 K_MINIMUM_DISTANCE_FOR_PLACEMENT = 30.0
+
+# pt creation
+PT_NET_AMOUNT_BALANCE = 0.00001250
+PT_S1_AMOUNT = 0.012
+PT_BUY_FEE = 0.08 / 100
+PT_SELL_FEE = 0.08 / 100
+PT_GROSS_EUR_BALANCE = 0.0
+
+COMPENSATION_GAP = 500.0
 
 
 class Session:
@@ -65,7 +75,7 @@ class Session:
         # 1. check conditions for new pt creation
         if self.is_new_pt_allowed():
             # 1. creation: (s: MONITOR, t: pending_orders, l: monitor)
-            # self.create_new_pt()
+            self.create_new_pt(cmp=cmp)
             pass
 
         # 2. loop through monitoring orders and place to Binance when appropriate
@@ -76,15 +86,11 @@ class Session:
                 # check balance
                 is_balance_enough, balance_needed = self.is_balance_enough(order=order)
                 if is_balance_enough:
-                    # check filters
-                    if order.filters_check_passed(filters=self.symbol_filters):
-                        is_order_placed, new_status = self.place_order(order=order)
-                        if is_order_placed:
-                            if new_status == 'NEW':
-                                # 2. placed: (s: PLACED, t: pending_orders, l: placed)
-                                order.set_status(status=OrderStatus.PLACED)
-                    else:
-                        log.critical(f'error checking filters for {order}')
+                    is_order_placed, new_status = self.place_order(order=order)
+                    if is_order_placed:
+                        if new_status == 'NEW':
+                            # 2. placed: (s: PLACED, t: pending_orders, l: placed)
+                            order.set_status(status=OrderStatus.PLACED)
                 else:
                     self.release_balance(balance_needed=balance_needed)
                     log.critical(f'balance is not enough for placing {order}')
@@ -123,17 +129,24 @@ class Session:
         #   3. balance
         return True
 
-    def create_new_pt(self):
+    def create_new_pt(self, cmp: float):
         # get parameters
-        dp = self.get_dynamic_parameters()
+        dp = self.get_dynamic_parameters(cmp=cmp)
         # create new orders
         b1, s1 = self.get_new_pt(dynamic_parameters=dp)
-        # add orders to database
-        self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=b1)
-        self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=s1)
-        # add orders to list
-        self.monitor.append(b1)
-        self.monitor.append(s1)
+
+        if b1 and s1:
+            # add orders to database
+            self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=b1)
+            self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=s1)
+            # add orders to list
+            self.monitor.append(b1)
+            self.monitor.append(s1)
+        else:
+            log.critical('the pt (b1, s1) can not be created:')
+            log.critical(f'b1: {b1}')
+            log.critical(f's1: {s1}')
+            print('\n********** CRITICAL ERROR CREATING PT **********\n')
 
     def is_balance_enough(self, order: Order) -> (bool, Optional[float]):
         # if not enough balance, it returns the value of the balance needed
@@ -153,19 +166,74 @@ class Session:
         #       b) compensating (1->2) existing monitoring orders
         pass
 
-    def get_dynamic_parameters(self) -> dict:
-        # TODO: implement it
+    def get_dynamic_parameters(self, cmp: float) -> (dict, float):
+        # TODO: implement dynamic parameters
         # check:
         #   1. proportion of sells vs buys
+        mp_shift = 0.0
+        mp = cmp + mp_shift
         #   2. balance needs
-        d = {}
+        d = dict(
+            mp=cmp,
+            nab=PT_NET_AMOUNT_BALANCE,
+            s1_qty=PT_S1_AMOUNT,
+            buy_fee=PT_BUY_FEE,
+            sell_fee=PT_SELL_FEE,
+            geb=PT_GROSS_EUR_BALANCE
+        )
         return d
 
-    def get_new_pt(self, dynamic_parameters: dict) -> (Order, Order):
-        # TODO: implement it
-        # legacy orders terminology
-        b1: Order
-        s1: Order
+    def is_filter_passed(self, bq: float, bp: float, sq: float, sp: float) -> bool:
+        sf = self.symbol_filters
+        if not sf.get('min_qty') <= bq <= sf.get('max_qty'):
+            log.critical(f'buy qty out of min/max limits: {bq}')
+            log.critical(f"min: {sf.get('min_qty')} - max: {sf.get('max_qty')}")
+            return False
+        elif not sf.get('min_qty') <= sq <= sf.get('max_qty'):
+            log.critical(f'sell qty out of min/max limits: {sq}')
+            log.critical(f"min: {sf.get('min_qty')} - max: {sf.get('max_qty')}")
+            return False
+        elif not sf.get('min_price') <= bp <= sf.get('max_price'):
+            log.critical(f'buy price out of min/max limits: {bp}')
+            log.critical(f"min: {sf.get('min_price')} - max: {sf.get('max_price')}")
+            return False
+        elif not sf.get('min_price') <= sp <= sf.get('max_price'):
+            log.critical(f'sell price out of min/max limits: {sp}')
+            log.critical(f"min: {sf.get('min_price')} - max: {sf.get('max_price')}")
+            return False
+        elif not (bq * bp) > sf.get('min_notional'):
+            log.critical(f'buy total (price * qty) under minimum: {bq * bp}')
+            log.critical(f'min notional: {sf.get("min_notional")}')
+            return False
+        return True
+
+    def get_new_pt(self, dynamic_parameters: dict) -> (Optional[Order], Optional[Order]):
+        b1 = None
+        s1 = None
+
+        # get perfect trade
+        b1_qty, b1_price, s1_price, g = get_pt_values(**dynamic_parameters)
+        s1_qty = dynamic_parameters.get('s1_qty')
+
+        # check filters
+        if self.is_filter_passed(bq=b1_qty, bp=b1_price, sq=s1_qty, sp=s1_price):
+            # create orders
+            b1 = Order(
+                session_id='S_20210502_2200',
+                order_id='XAVI BENAVENT',
+                pt_id='PT_000008',
+                k_side=k_binance.SIDE_BUY,
+                price=b1_price,
+                amount=b1_qty
+            )
+            s1 = Order(
+                session_id='S_20210502_2200',
+                order_id='XAVI BENAVENT',
+                pt_id='PT_000008',
+                k_side=k_binance.SIDE_SELL,
+                price=s1_price,
+                amount=s1_qty
+            )
         return b1, s1
 
     def quit(self):

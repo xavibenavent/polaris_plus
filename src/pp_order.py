@@ -96,9 +96,6 @@ class Order:
                 f'- {self.amount:12,.6f} - {self.bnb_commission:12,.6f} - {self.status.name:10}'
                 f'- {self.binance_id} - {self.uid} - {self.creation}')
 
-    def filters_check_passed(self, filters: dict) -> bool:
-        return True
-
 
 
 
