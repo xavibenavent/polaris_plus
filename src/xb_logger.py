@@ -12,10 +12,12 @@ class XBLogger:
         ch = logging.FileHandler(filename='src/log/polaris.log', mode='w')
 
         # setup output string
-        s1 = '%(asctime)s, %(levelname)-8s, %(filename)-20s, %(funcName)-25s'
-        s2 = ', %(message)s'
+        s1 = '%(levelname)-8s'
+        s2 = '- %(message)s'
         format_s = s1 + s2
 
         formatter = logging.Formatter(format_s)
         ch.setFormatter(formatter)
         log.addHandler(ch)
+
+        # %(asctime)s, %(filename)-20s, %(funcName)-25s

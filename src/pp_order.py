@@ -53,11 +53,10 @@ class Order:
         else:
             self.uid = uid
 
-        print(f'** CREATED ** {self}')
-        log.info(f'** CREATED ++ {self}')
+        log.info(f'** ORDER CREATED ++ {self}')
 
     def __del__(self):
-        log.info(f'{self} OBJECT DESTROYED')
+        log.info(f'** ORDER DESTROYED {self}')
 
     def is_ready_for_placement(self, cmp: float, min_dist: float) -> bool:
         return self.get_distance(cmp=cmp) < min_dist
@@ -84,9 +83,9 @@ class Order:
         self.bnb_commission = commission
 
     def set_status(self, status: OrderStatus):
+        old_status = self.status
         self.status = status
-        log.info(self)
-        print(self)
+        log.info(f'** ORDER STATUS CHANGED FROM {old_status.name} TO {status.name} - {self}')
 
     def set_binance_id(self, new_id: int):
         self.binance_id = new_id

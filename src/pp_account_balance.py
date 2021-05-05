@@ -1,6 +1,6 @@
 # pp_account_balance.py
 import logging
-from typing import List, Dict
+from typing import Dict
 
 log = logging.getLogger('log')
 
@@ -52,11 +52,11 @@ class AssetBalance:
         elif self.name.lower() == 'bnb':
             key = 'bnb'
         else:
-            log.critical(f'name not allowed in asset balance {self.print()}')
+            log.critical(f'name not allowed in asset balance {self}')
         return {key: self}
 
     def __repr__(self):
-        return (f'{self.tag:10} [{self.name}]:    '
+        return (f'-> -> BALANCE UPDATE: {self.tag:10} [{self.name}]:    '
                 f'balance: {self.get_total():15,.{self.p}f}  -  '
                 f'free: {self.free:15,.{self.p}f}  -  '
                 f'locked: {self.locked:15,.{self.p}f}')
