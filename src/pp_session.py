@@ -1,12 +1,13 @@
 # pp_session.py
 import logging
 import sys
+from icecream  import ic
+from datetime import datetime
 
 from typing import List, Optional
 from binance import enums as k_binance
 
 from src.pp_market import Market
-from src.pp_account_balance import AccountBalance
 from src.pp_order import Order, OrderStatus
 from src.pp_dbmanager import DBManager
 from src.pp_account_balance import AccountBalance
@@ -18,9 +19,11 @@ DATABASE_FILE = 'src/database/orders.db'
 PENDING_ORDERS_TABLE = 'pending_orders'
 TRADED_ORDERS_TABLE = 'traded_orders'
 
-K_MINIMUM_DISTANCE_FOR_PLACEMENT = 30.0
+K_MINIMUM_DISTANCE_FOR_PLACEMENT = 50.0
 
 # pt creation
+PT_CREATED_COUNT_MAX = 2
+
 PT_NET_AMOUNT_BALANCE = 0.00001250
 PT_S1_AMOUNT = 0.012
 PT_BUY_FEE = 0.08 / 100
@@ -44,6 +47,9 @@ class Session:
         self.current_ab = self.get_account_balance(tag='current')
         self.net_ab = self.current_ab - self.initial_ab
         self.initial_ab.log_print()
+
+        self.session_id = f'S_{datetime.now().strftime("%Y%m%d_%H%M")}'
+        self.pt_created_count = 0
 
         # create the database manager and fill pending orders list
         self.dbm = self.get_dbm()
@@ -74,9 +80,10 @@ class Session:
     def symbol_ticker_callback(self, cmp: float) -> None:
         # 1. check conditions for new pt creation
         if self.is_new_pt_allowed():
+            # ic(self.pt_created_count)
             # 1. creation: (s: MONITOR, t: pending_orders, l: monitor)
             self.create_new_pt(cmp=cmp)
-            input('type a key to continue...')
+            # input('type a key to continue...')
             pass
 
         # 2. loop through monitoring orders and place to Binance when appropriate
@@ -87,19 +94,42 @@ class Session:
                 # check balance
                 is_balance_enough, balance_needed = self.is_balance_enough(order=order)
                 if is_balance_enough:
+                    # change from monitor to placed
+                    # doing it before placing the order, we guarantee that
+                    # when the order is traded and received through the
+                    # socket, it is in the placed list
+                    self.monitor.remove(order)
+                    ic(f'REMOVED FROM MONITOR LIST: {order}')
+                    self.placed.append(order)
+                    ic(f'ADDED TO PLACED LIST: {order}')
+                    # new_status not used by the moment
                     is_order_placed, new_status = self.place_order(order=order)
                     if is_order_placed:
-                        if new_status == 'NEW':
-                            # 2. placed: (s: PLACED, t: pending_orders, l: placed)
-                            order.set_status(status=OrderStatus.PLACED)
+                        # 2. placed: (s: PLACED, t: pending_orders, l: placed)
+                        order.set_status(status=OrderStatus.PLACED)
+                    else:
+                        # move back the order from placed to monitor
+                        ic(f'REMOVED FROM PLACED LIST: {order}')
+                        self.placed.remove(order)
+                        ic(f'ADDED BACK TO MONITOR LIST: {order}')
+                        self.monitor.append(order)
                 else:
                     self.release_balance(balance_needed=balance_needed)
                     log.critical(f'balance is not enough for placing {order}')
 
         # print(cmp)
 
-    def order_traded_callback(self, order_id: str, order_price: float, bnb_commission: float) -> None:
-        print(f'price: {order_price}  commission: {bnb_commission} [BNB]')
+    def order_traded_callback(self, uid: str, order_price: float, bnb_commission: float) -> None:
+        print(f'********** ORDER TRADED: price: {order_price}  commission: {bnb_commission} [BNB]')
+        # get the order by uid
+        for order in self.placed:
+            if order.uid == uid:
+                # add to traded_orders table
+                self.dbm.add_order(table=TRADED_ORDERS_TABLE, order=order)
+                # remove from pending_orders table
+                self.dbm.delete_order(table=PENDING_ORDERS_TABLE, order=order)
+                # remove from placed list
+                self.placed.remove(order)
 
     def account_balance_callback(self, ab: AccountBalance) -> None:
         self.current_ab = ab
@@ -124,17 +154,21 @@ class Session:
 
     def is_new_pt_allowed(self) -> bool:
         # TODO: implement it
+        result = False
+        if self.pt_created_count < PT_CREATED_COUNT_MAX:
+            result = True
         # conditions to check:
         #   1. elapsed time since last creation
         #   2. cmp vs last created mp
         #   3. balance
-        return True
+        #   4. pt_created_max
+        return result
 
     def create_new_pt(self, cmp: float):
         # get parameters
-        dp = self.get_dynamic_parameters(cmp=cmp)
+        dp, is_default = self.get_dynamic_parameters(cmp=cmp)
         # create new orders
-        b1, s1 = self.get_new_pt(dynamic_parameters=dp)
+        b1, s1 = self.get_new_pt(dynamic_parameters=dp, is_default=is_default)
 
         if b1 and s1:
             # add orders to database
@@ -149,14 +183,14 @@ class Session:
             log.critical(f's1: {s1}')
             print('\n********** CRITICAL ERROR CREATING PT **********\n')
 
-    def is_balance_enough(self, order: Order) -> (bool, Optional[float]):
+    def is_balance_enough(self, order: Order) -> (bool, float):
         # if not enough balance, it returns the value of the balance needed
         is_balance_enough = False
-        balance_needed = None
+        balance_needed = 0.0
         # TODO: implement it
         # TODO: remove it
         is_balance_enough = True
-        return is_balance_enough
+        return is_balance_enough, balance_needed
 
     def release_balance(self, balance_needed: float):
         # TODO: implement it
@@ -167,7 +201,7 @@ class Session:
         #       b) compensating (1->2) existing monitoring orders
         pass
 
-    def get_dynamic_parameters(self, cmp: float) -> (dict, float):
+    def get_dynamic_parameters(self, cmp: float) -> (dict, bool):
         # TODO: implement dynamic parameters
         # check:
         #   1. proportion of sells vs buys
@@ -182,7 +216,7 @@ class Session:
             sell_fee=PT_SELL_FEE,
             geb=PT_GROSS_EUR_BALANCE
         )
-        return d
+        return d, mp_shift == 0  # return TRue if no shift
 
     def is_filter_passed(self, bq: float, bp: float, sq: float, sp: float) -> bool:
         sf = self.symbol_filters
@@ -208,9 +242,19 @@ class Session:
             return False
         return True
 
-    def get_new_pt(self, dynamic_parameters: dict) -> (Optional[Order], Optional[Order]):
+    def get_new_pt(self,
+                   dynamic_parameters: dict,
+                   is_default: bool) -> (Optional[Order], Optional[Order]):
         b1 = None
         s1 = None
+
+        if is_default:
+            order_id = 'DEFAULT'
+        else:
+            order_id = 'SHIFTED'
+
+        self.pt_created_count += 1
+        pt_id = f'PT_{self.pt_created_count:06}'
 
         # get perfect trade
         b1_qty, b1_price, s1_price, g = get_pt_values(**dynamic_parameters)
@@ -220,17 +264,17 @@ class Session:
         if self.is_filter_passed(bq=b1_qty, bp=b1_price, sq=s1_qty, sp=s1_price):
             # create orders
             b1 = Order(
-                session_id='S_20210502_2200',
-                order_id='XAVI BENAVENT',
-                pt_id='PT_000008',
+                session_id=self.session_id,
+                order_id=order_id,
+                pt_id=pt_id,
                 k_side=k_binance.SIDE_BUY,
                 price=b1_price,
                 amount=b1_qty
             )
             s1 = Order(
-                session_id='S_20210502_2200',
-                order_id='XAVI BENAVENT',
-                pt_id='PT_000008',
+                session_id=self.session_id,
+                order_id=order_id,
+                pt_id=pt_id,
                 k_side=k_binance.SIDE_SELL,
                 price=s1_price,
                 amount=s1_qty
@@ -250,6 +294,8 @@ class Session:
             log.critical('after cancellation of all orders, locked balance should be 0')
             log.critical(btc_bal)
             log.critical(eur_bal)
+        else:
+            log.info(f'LOCKED BALANCE CHECK: {btc_bal} - {eur_bal}')
 
         self.market.stop()
 

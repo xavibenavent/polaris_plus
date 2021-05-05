@@ -1,5 +1,5 @@
 # pp_market.py
-import pprint
+
 import sys
 import logging
 from typing import Callable, Union, Any, Optional, List
@@ -7,7 +7,7 @@ from twisted.internet import reactor
 from binance.client import Client
 from binance.websockets import BinanceSocketManager
 from binance import enums as k_binance
-from binance import  exceptions
+from binance import exceptions
 
 from binance.exceptions import BinanceAPIException
 from binance.exceptions import BinanceRequestException
@@ -65,11 +65,11 @@ class Market:
         if event_type == 'executionReport':
             if (msg['x'] == 'TRADE') and (msg["X"] == 'FILLED'):
                 # order traded
-                order_id = str(msg['c'])
+                uid = str(msg['c'])
                 order_price = float(msg['L'])
                 bnb_commission = float(msg['n'])
                 # trigger actions for traded order in session
-                self.order_traded_callback(order_id, order_price, bnb_commission)
+                self.order_traded_callback(uid, order_price, bnb_commission)
             elif (msg['x'] == 'NEW') and (msg["X"] == 'NEW'):
                 # order accepted (PLACE confirmation)
                 # not used by the moment
@@ -120,8 +120,8 @@ class Market:
                 type=k_binance.ORDER_TYPE_LIMIT,
                 timeInForce=k_binance.TIME_IN_FORCE_GTC,
                 # TODO: check precision
-                quantity=order.get_amount(precision=8),
-                price=order.get_price_str(precision=8),
+                quantity=order.get_amount(precision=6),
+                price=order.get_price_str(precision=2),
                 newClientOrderId=order.uid)
             if msg:
                 d = dict(binance_id=msg['orderId'], status=msg.get('status'))
