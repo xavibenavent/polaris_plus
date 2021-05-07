@@ -13,6 +13,7 @@ from src.pp_order import Order, OrderStatus
 from src.pp_dbmanager import DBManager
 from src.pp_account_balance import AccountBalance
 from src.xb_pt_calculator import get_pt_values
+from src.pp_orders_book import OrdersBook
 
 log = logging.getLogger('log')
 
@@ -57,7 +58,7 @@ class Session:
         self.initial_ab = self.get_account_balance(tag='initial')
         self.current_ab = self.get_account_balance(tag='current')
         self.net_ab = self.current_ab - self.initial_ab
-        self.initial_ab.log_print()
+        #  self.initial_ab.log_print()
 
         self.session_id = f'S_{datetime.now().strftime("%Y%m%d_%H%M")}'
         self.pt_created_count = 0
@@ -72,8 +73,11 @@ class Session:
 
         # create the database manager and fill pending orders list
         self.dbm = self.get_dbm()
-        self.monitor: List[Order] \
-            = self.dbm.get_orders_from_table(table=PENDING_ORDERS_TABLE)
+        # self.monitor: List[Order] \
+        #     = self.dbm.get_orders_from_table(table=PENDING_ORDERS_TABLE)
+
+        orders_from_previous_sessions = self.dbm.get_orders_from_table(table=PENDING_ORDERS_TABLE)
+        self.ob_monitor = OrdersBook(orders=orders_from_previous_sessions, dbm=self.dbm, table=PENDING_ORDERS_TABLE)
 
         # create placed orders list (initially empty)
         self.placed: List[Order] = []
@@ -107,27 +111,27 @@ class Session:
             self.create_new_pt(cmp=cmp)
 
         # 2. loop through monitoring orders and place to Binance when appropriate
-        for order in self.monitor:
+        for order in self.ob_monitor.orders:
             if order.is_ready_for_placement(
                     cmp=cmp,
                     min_dist=K_MINIMUM_DISTANCE_FOR_PLACEMENT):
                 # check balance
                 is_balance_enough, balance_needed = self.is_balance_enough(order=order)
                 if is_balance_enough:
-                    Session.move_order(order=order, from_list=self.monitor, to_list=self.placed)
+                    Session.move_order(order=order, from_list=self.ob_monitor.orders, to_list=self.placed)
                     is_order_placed, new_status = self.place_order(order=order)
                     if is_order_placed:
                         # 2. placed: (s: PLACED, t: pending_orders, l: placed)
                         order.set_status(status=OrderStatus.PLACED)
                     else:
-                        Session.move_order(order=order, from_list=self.placed, to_list=self.monitor)
+                        Session.move_order(order=order, from_list=self.placed, to_list=self.ob_monitor.orders)
                 # else:
                 #     self.release_balance(balance_needed=balance_needed)
                     # log.critical(f'balance is not enough for placing {order}')
         # loop through placed orders and move to monitor list if isolated
         for order in self.placed:
             if order.is_isolated(cmp=cmp, max_dist=K_MAX_DISTANCE_FOR_REMAINING_PLACED):
-                Session.move_order(order=order, from_list=self.placed, to_list=self.monitor)
+                Session.move_order(order=order, from_list=self.placed, to_list=self.ob_monitor.orders)
                 order.set_status(status=OrderStatus.MONITOR)
                 # cancel order in Binance
                 self.market.cancel_orders(orders=[order])
@@ -279,8 +283,8 @@ class Session:
             self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=b1)
             self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=s1)
             # add orders to list
-            self.monitor.append(b1)
-            self.monitor.append(s1)
+            self.ob_monitor.orders.append(b1)
+            self.ob_monitor.orders.append(s1)
         else:
             log.critical('the pt (b1, s1) can not be created:')
             log.critical(f'b1: {b1}')
@@ -386,7 +390,7 @@ class Session:
         print('\n********** INITIAL SANITY X-CHECK (ISOLATED ORDERS) **********')
 
         print('\n********** pending orders LIST: (order status: MONITOR) **********')
-        for order in self.monitor:
+        for order in self.ob_monitor.orders:
             print(order)
 
         print('\n********** pending orders TABLE: **********')

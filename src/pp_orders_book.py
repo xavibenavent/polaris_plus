@@ -13,6 +13,10 @@ log = logging.getLogger('log')
 
 class OrdersBook:
     def __init__(self, orders: List[Order], dbm: DBManager, table: str):
+        # e = True
+        # if e:
+        #     raise AssertionError
+        self.orders = []
         self.buy = []
         self.sell = []
 
@@ -21,30 +25,36 @@ class OrdersBook:
 
         # add each order to its appropriate list
         for order in orders:
-            self.add_order(order)
+            # self.add_order(order)
+            self.orders.append(order)
 
     def add_order(self, order: Order) -> None:
-        if order.k_side == k_binance.SIDE_BUY:
-            self.buy.append(order)
-        else:
-            self.sell.append(order)
+        self.orders.append(order)
+        # if order.k_side == k_binance.SIDE_BUY:
+        #     self.buy.append(order)
+        # else:
+        #     self.sell.append(order)
 
     def remove_order(self, order: Order) -> None:
-        if order.k_side == k_binance.SIDE_BUY:
-            self.buy.remove(order)
-        else:
-            self.sell.remove(order)
+        self.orders.remove(order)
+        # if order.k_side == k_binance.SIDE_BUY:
+        #     self.buy.remove(order)
+        # else:
+        #     self.sell.remove(order)
 
     def get_all_orders(self) -> List[Order]:
-        return self.buy + self.sell
+        # return self.buy + self.sell
+        return self.orders
 
     def get_order(self, uid: str) -> Order:
-        for order in self.get_all_orders():
+        # for order in self.get_all_orders():
+        for order in orders:
             if order.uid == uid:
                 return order
 
     def count(self) -> int:
-        return len(self.get_all_orders())
+        # return len(self.get_all_orders())
+        return len(self.orders)
 
     def buy_count(self) -> int:
         return len(self.buy)
@@ -95,9 +105,12 @@ class OrdersBook:
                 uid=order.uid
             )
             # add new orders to appropriate list
-            self.buy.append(b1)
-            self.sell.append(s1)
+            self.orders.append(b1)
+            self.orders.append(s1)
+            # self.buy.append(b1)
+            # self.sell.append(s1)
             # delete original order from list
-            self.remove_order(order)
+            self.orders.remove(order)
+            # self.remove_order(order)
             # delete original order from pending_orders table
             self.dbm.delete_order(order=order, table=self.table)
