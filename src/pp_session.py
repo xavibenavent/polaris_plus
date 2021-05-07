@@ -32,7 +32,7 @@ B_AMOUNT_BUFFER = 0.02  # remaining guaranteed BTC balance
 
 # pt creation
 PT_CREATED_COUNT_MAX = 60  # max number of pt created per session
-PT_CMP_CYCLE_COUNT = 60  # approximately secs (cmp update elapsed time)
+PT_CMP_CYCLE_COUNT = 20  # approximately secs (cmp update elapsed time)
 
 PT_NET_AMOUNT_BALANCE = 0.00001350
 PT_S1_AMOUNT = 0.014
@@ -206,30 +206,6 @@ class Session:
 
         return is_balance_enough, balance_needed  # in fact the balance needed will be less
 
-    def is_filter_passed(self, bq: float, bp: float, sq: float, sp: float) -> bool:
-        sf = self.symbol_filters
-        if not sf.get('min_qty') <= bq <= sf.get('max_qty'):
-            log.critical(f'buy qty out of min/max limits: {bq}')
-            log.critical(f"min: {sf.get('min_qty')} - max: {sf.get('max_qty')}")
-            return False
-        elif not sf.get('min_qty') <= sq <= sf.get('max_qty'):
-            log.critical(f'sell qty out of min/max limits: {sq}')
-            log.critical(f"min: {sf.get('min_qty')} - max: {sf.get('max_qty')}")
-            return False
-        elif not sf.get('min_price') <= bp <= sf.get('max_price'):
-            log.critical(f'buy price out of min/max limits: {bp}')
-            log.critical(f"min: {sf.get('min_price')} - max: {sf.get('max_price')}")
-            return False
-        elif not sf.get('min_price') <= sp <= sf.get('max_price'):
-            log.critical(f'sell price out of min/max limits: {sp}')
-            log.critical(f"min: {sf.get('min_price')} - max: {sf.get('max_price')}")
-            return False
-        elif not (bq * bp) > sf.get('min_notional'):
-            log.critical(f'buy total (price * qty) under minimum: {bq * bp}')
-            log.critical(f'min notional: {sf.get("min_notional")}')
-            return False
-        return True
-
     def place_order(self, order) -> (bool,Optional[str]):
         order_placed = False
         status_received = None
@@ -329,8 +305,9 @@ class Session:
         b1_qty, b1_price, s1_price, g = get_pt_values(**dynamic_parameters)
         s1_qty = dynamic_parameters.get('s1_qty')
 
-        # check filters
-        if self.is_filter_passed(bq=b1_qty, bp=b1_price, sq=s1_qty, sp=s1_price):
+        # check filters before creating order
+        if Order.is_filter_passed(filters=self.symbol_filters, qty=b1_qty, price=b1_price):
+        # if self.is_filter_passed(bq=b1_qty, bp=b1_price, sq=s1_qty, sp=s1_price):
             # create orders
             b1 = Order(
                 session_id=self.session_id,
@@ -340,6 +317,8 @@ class Session:
                 price=b1_price,
                 amount=b1_qty
             )
+        if Order.is_filter_passed(filters=self.symbol_filters, qty=s1_qty, price=s1_price):
+
             s1 = Order(
                 session_id=self.session_id,
                 order_id=order_id,

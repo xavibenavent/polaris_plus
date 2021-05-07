@@ -84,18 +84,24 @@ class CLIManager:
         if self.session.net_ab:
             print('**********   NET BALANCE   **********')
             self.session.net_ab.log_print()
-        print('********** ZERO EURO AMOUNT **********')
+        print('********** BTC EQUIVALENT AMOUNT **********')
         # get euro converted to btc
-        btceur = self.session.market.get_cmp(symbol='BTCEUR')
-        initial_euro_amount = self.session.initial_ab.get_free_price_s2() / btceur
-        initial_zero_euro_amount = self.session.initial_ab.get_free_amount_s1() + initial_euro_amount
+        # in order to compare appropriately a fixed rate is used
+        eur_per_btc = 50000.0  # self.session.market.get_cmp(symbol='BTCEUR')
+        btc_per_bnb = 0.02  # self.session.market.get_cmp(symbol='BNBBTC')
 
-        current_euro_amount = self.session.current_ab.get_free_price_s2() / btceur
-        current_zero_euro_amount = self.session.current_ab.get_free_amount_s1() + current_euro_amount
-        diff = current_zero_euro_amount - initial_zero_euro_amount
+        initial_eur_to_btc = self.session.initial_ab.s2.get_total() / eur_per_btc
+        initial_bnb_to_btc = self.session.initial_ab.bnb.get_total() * btc_per_bnb
+        initial_btc_equivalent = self.session.initial_ab.s1.get_total() + initial_eur_to_btc + initial_bnb_to_btc
 
-        print(f'zero euro amount:     initial: {initial_zero_euro_amount:12,.8f} '
-              f'- current: {current_zero_euro_amount:12,.8f} - net balance: {diff:12,.8f}')
+        current_eur_to_btc = self.session.current_ab.s2.get_total() / eur_per_btc
+        current_bnb_to_btc = self.session.current_ab.bnb.get_total() * btc_per_bnb
+        current_btc_equivalent = self.session.current_ab.s1.get_total() + current_eur_to_btc + current_bnb_to_btc
+
+        diff = current_btc_equivalent - initial_btc_equivalent
+
+        print(f'btc equivalent amount:     initial: {initial_btc_equivalent:12,.8f} '
+              f'- current: {current_btc_equivalent:12,.8f} - net balance: {diff:12,.8f} [BTC]')
 
     def create_market_order(self) -> None:
         order = self.session.market.client.order_market_buy(

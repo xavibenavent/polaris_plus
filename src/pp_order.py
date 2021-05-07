@@ -106,3 +106,20 @@ class Order:
         return (f'{self.k_side:4} - {self.session_id} - {self.pt_id:9} - {self.order_id:9} - {self.price:10,.2f} '
                 f'- {self.amount:12,.6f} - {self.bnb_commission:12,.6f} - {self.status.name:10}'
                 f'- {self.binance_id} - {self.uid} - {self.creation}')
+
+    @staticmethod
+    def is_filter_passed(filters: dict, qty: float, price: float) -> bool:
+        if not filters.get('min_qty') <= qty <= filters.get('max_qty'):
+            log.critical(f'qty out of min/max limits: {qty}')
+            log.critical(f"min: {filters.get('min_qty')} - max: {filters.get('max_qty')}")
+            return False
+        elif not filters.get('min_price') <= price <= filters.get('max_price'):
+            log.critical(f'buy price out of min/max limits: {price}')
+            log.critical(f"min: {filters.get('min_price')} - max: {filters.get('max_price')}")
+            return False
+        elif not (qty * price) > filters.get('min_notional'):
+            log.critical(f'buy total (price * qty) under minimum: {qty * price}')
+            log.critical(f'min notional: {filters.get("min_notional")}')
+            return False
+        return True
+
