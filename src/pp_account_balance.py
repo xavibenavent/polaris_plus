@@ -69,7 +69,7 @@ class AssetBalance:
 class AccountBalance:
     def __init__(self, d: Dict[str, AssetBalance]):
         # account balance
-        self.s1 = d['s1']  # btc
+        self.s1: AssetBalance = d['s1']  # btc
         self.s2 = d['s2']  # eur
         self.bnb = d['bnb']
 
@@ -97,8 +97,12 @@ class AccountBalance:
         bnb.tag = 'diff'
         return AccountBalance(d=dict([('s1', s1), ('s2', s2), ('bnb', bnb)]))
 
+    def __repr__(self):
+        log.info(self.s1)
+        log.info(self.s2)
+        log.info(self.bnb)
+
     def log_print(self) -> None:
-        print()
         self.s1.log_print()
         self.s2.log_print()
         self.bnb.log_print()

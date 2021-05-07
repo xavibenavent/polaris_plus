@@ -18,7 +18,7 @@ class TestDBManager(unittest.TestCase):
             print(e)
         print('cwd: ', os.getcwd())
 
-        self.dbm = DBManager(db_name=TEST_DATABASE)
+        self.dbm = DBManager(db_name=TEST_DATABASE, order_tables=['orders'])
 
         self.order = Order(
             session_id='S_20210501_2008',

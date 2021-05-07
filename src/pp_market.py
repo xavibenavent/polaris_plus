@@ -173,12 +173,16 @@ class Market:
         except (BinanceAPIException, BinanceRequestException) as e:
             log.critical(e)
 
-    def cancel_all_placed_orders(self, orders: List[Order]):
-        log.info('********** CANCELLING ALL PLACED ORDERS **********')
+    def get_cmp(self, symbol: str) -> float:
+        cmp = self.client.get_avg_price(symbol=symbol)
+        return float(cmp['price'])
+
+    def cancel_orders(self, orders: List[Order]):
+        log.info('********** CANCELLING PLACED ORDER(S) **********')
         for order in orders:
             try:
                 d = self.client.cancel_order(symbol='BTCEUR', origClientOrderId=order.uid)
-                log.info(f'{order} CANCELLED IN BINANCE')
+                log.info(f'** ORDER CANCELLED IN BINANCE {order}')
             except (BinanceAPIException, BinanceRequestException) as e:
                 log.critical(e)
 

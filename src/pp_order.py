@@ -61,6 +61,9 @@ class Order:
     def is_ready_for_placement(self, cmp: float, min_dist: float) -> bool:
         return self.get_distance(cmp=cmp) < min_dist
 
+    def is_isolated(self, cmp:float, max_dist: float) -> bool:
+        return self.get_distance(cmp=cmp) > max_dist
+
     def get_distance(self, cmp: float) -> float:
         # return abs(cmp - self._price)
         if self.k_side == k_binance.SIDE_BUY:
@@ -76,8 +79,17 @@ class Order:
     def get_amount(self, precision: int = 6) -> float:
         return round(self.amount, precision)  # 6 for BTC
 
+    def get_signed_amount(self) -> float:
+        if self.k_side == k_binance.SIDE_BUY:
+            return self.amount
+        else:
+            return - self.amount
+
     def get_total(self, precision: int = 2) -> float:
         return round(self.price * self.amount, precision)
+
+    def get_signed_total(self) -> float:
+        return - (self.price * self.get_signed_amount())
 
     def set_bnb_commission(self, commission: float) -> None:
         self.bnb_commission = commission

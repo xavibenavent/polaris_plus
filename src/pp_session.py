@@ -1,4 +1,5 @@
 # pp_session.py
+
 import logging
 import sys
 from icecream  import ic
@@ -19,21 +20,24 @@ DATABASE_FILE = 'src/database/orders.db'
 PENDING_ORDERS_TABLE = 'pending_orders'
 TRADED_ORDERS_TABLE = 'traded_orders'
 
-K_MINIMUM_DISTANCE_FOR_PLACEMENT = 25.0  # order activation distance
-K_MINIMUM_SHIFT_STEP = 10  # mp shift applied to equidistant point
+K_MINIMUM_DISTANCE_FOR_PLACEMENT = 35.0  # order activation distance
+K_MAX_DISTANCE_FOR_REMAINING_PLACED = 100.0
+K_MINIMUM_SHIFT_STEP = 15  # mp shift applied to equidistant point
+K_MAX_SHIFT = 50.0
 K_ORDER_PRICE_BUFFER = 5.0  # not used
+K_AUGMENTED_FEE = 10 / 100
 
 B_TOTAL_BUFFER = 1000.0  # remaining guaranteed EUR balance
 B_AMOUNT_BUFFER = 0.02  # remaining guaranteed BTC balance
 
 # pt creation
-PT_CREATED_COUNT_MAX = 100  # max number of pt created per session
-PT_CMP_CYCLE_COUNT = 30  # approximately secs (cmp update elapsed time)
+PT_CREATED_COUNT_MAX = 60  # max number of pt created per session
+PT_CMP_CYCLE_COUNT = 60  # approximately secs (cmp update elapsed time)
 
 PT_NET_AMOUNT_BALANCE = 0.00001350
-PT_S1_AMOUNT = 0.012
-PT_BUY_FEE = 0.08 / 100
-PT_SELL_FEE = 0.08 / 100
+PT_S1_AMOUNT = 0.014
+PT_BUY_FEE = 0.09 / 100
+PT_SELL_FEE = 0.09 / 100
 PT_GROSS_EUR_BALANCE = 0.0
 
 COMPENSATION_GAP = 500.0  # applied gap for compensated orders
@@ -61,6 +65,11 @@ class Session:
         self.sell_count = 0
         self.cmp_count = 0
 
+        self.new_pt_permission_granted = True
+
+        self.balance_total_needed = False
+        self.balance_amount_needed = False
+
         # create the database manager and fill pending orders list
         self.dbm = self.get_dbm()
         self.monitor: List[Order] \
@@ -68,6 +77,7 @@ class Session:
 
         # create placed orders list (initially empty)
         self.placed: List[Order] = []
+        self.traded: List[Order] = []
 
         # get filters that will be checked before placing an order
         self.symbol_filters = self.market.get_symbol_info(symbol='BTCEUR')
@@ -92,12 +102,9 @@ class Session:
         self.cmp_count += 1
 
         # 1. check conditions for new pt creation
-        if self.is_new_pt_allowed():
-            # ic(self.pt_created_count)
+        if self.new_pt_permission_granted and self.is_new_pt_allowed():
             # 1. creation: (s: MONITOR, t: pending_orders, l: monitor)
             self.create_new_pt(cmp=cmp)
-            # input('type a key to continue...')
-            pass
 
         # 2. loop through monitoring orders and place to Binance when appropriate
         for order in self.monitor:
@@ -107,31 +114,28 @@ class Session:
                 # check balance
                 is_balance_enough, balance_needed = self.is_balance_enough(order=order)
                 if is_balance_enough:
-                    # change from monitor to placed
-                    # doing it before placing the order, we guarantee that
-                    # when the order is traded and received through the
-                    # socket, it is in the placed list
-                    self.monitor.remove(order)
-                    log.info('')
-                    log.info(f'** ORDER REMOVED FROM MONITOR LIST:   {order}')
-                    self.placed.append(order)
-                    log.info(f'** ORDER ADDED TO PLACED LIST:        {order}')
-                    # new_status not used by the moment
+                    Session.move_order(order=order, from_list=self.monitor, to_list=self.placed)
                     is_order_placed, new_status = self.place_order(order=order)
                     if is_order_placed:
                         # 2. placed: (s: PLACED, t: pending_orders, l: placed)
                         order.set_status(status=OrderStatus.PLACED)
                     else:
-                        # move back the order from placed to monitor
-                        log.info(f'** ORDER REMOVED FROM PLACED LIST:    {order}')
-                        self.placed.remove(order)
-                        log.info(f'** ORDER ADDED BACK TO MONITOR LIST:  {order}')
-                        self.monitor.append(order)
-                else:
-                    self.release_balance(balance_needed=balance_needed)
-                    log.critical(f'balance is not enough for placing {order}')
+                        Session.move_order(order=order, from_list=self.placed, to_list=self.monitor)
+                # else:
+                #     self.release_balance(balance_needed=balance_needed)
+                    # log.critical(f'balance is not enough for placing {order}')
+        # loop through placed orders and move to monitor list if isolated
+        for order in self.placed:
+            if order.is_isolated(cmp=cmp, max_dist=K_MAX_DISTANCE_FOR_REMAINING_PLACED):
+                Session.move_order(order=order, from_list=self.placed, to_list=self.monitor)
+                order.set_status(status=OrderStatus.MONITOR)
+                # cancel order in Binance
+                self.market.cancel_orders(orders=[order])
 
-        # print(cmp)
+    @staticmethod
+    def move_order(order: Order, from_list: List[Order], to_list: List[Order]) -> None:
+        from_list.remove(order)
+        to_list.append(order)
 
     def order_traded_callback(self, uid: str, order_price: float, bnb_commission: float) -> None:
         print(f'********** ORDER TRADED:    price: {order_price} [EUR] - commission: {bnb_commission} [BNB]')
@@ -143,7 +147,10 @@ class Session:
                     self.buy_count += 1
                 else:
                     self.sell_count += 1
-                print(order)
+                # set commission and price
+                order.bnb_commission = bnb_commission
+                order.price = order_price
+                # log
                 log.info(f'********** ORDER TRADED ********** {order}')
                 # change status
                 order.set_status(status=OrderStatus.TRADED)
@@ -153,13 +160,13 @@ class Session:
                 self.dbm.delete_order(table=PENDING_ORDERS_TABLE, order=order)
                 # remove from placed list
                 self.placed.remove(order)
+                # add to traded list
+                self.traded.append(order)
 
     def account_balance_callback(self, ab: AccountBalance) -> None:
         self.current_ab = ab
         self.net_ab = ab - self.initial_ab
         self.net_ab.s2.p = 2
-        print('********** ACCOUNT BALANCE UPDATE **********')
-        self.net_ab.log_print()
 
     # ********** check methods **********
 
@@ -181,13 +188,21 @@ class Session:
             balance_needed = order.get_total()
             if (balance_allowance - balance_needed) > B_TOTAL_BUFFER:
                 is_balance_enough = True
+                self.balance_total_needed = False
+            else:
+                # force next pt to be market in sell side
+                self.balance_total_needed = True
         else:
             balance_allowance = self.current_ab.get_free_amount_s1()
             balance_needed = order.amount
             if (balance_allowance - balance_needed) > B_AMOUNT_BUFFER:
                 is_balance_enough = True
+                self.balance_amount_needed = False
+            else:
+                # force next pt to be market in buy side
+                self.balance_amount_needed = True
 
-        log.info(f'$$ BALANCE CHECK $$  allowance: {balance_allowance} - needed: {balance_needed} - enough: {is_balance_enough}')
+        # log.info(f'$$ BALANCE CHECK $$  allowance: {balance_allowance} - needed: {balance_needed} - enough: {is_balance_enough}')
 
         return is_balance_enough, balance_needed  # in fact the balance needed will be less
 
@@ -242,15 +257,37 @@ class Session:
 
     def get_dynamic_parameters(self, cmp: float) -> (dict, bool):
         #   1. proportion of sells vs buys
-        mp_shift = (self.sell_count - self.buy_count) * K_MINIMUM_SHIFT_STEP
-        log.info(f'++ SHIFT SETTING: mp_shift: {mp_shift} - buy_count: {self.buy_count} - sell_count: {self.sell_count}')
+        mp_shift = 0.0
+        buy_fee = PT_BUY_FEE
+        sell_fee = PT_SELL_FEE
+        if not self.balance_amount_needed and not self.balance_total_needed:
+            mp_shift = (self.sell_count - self.buy_count) * K_MINIMUM_SHIFT_STEP
+            if abs(mp_shift) > K_MAX_SHIFT:
+                mp_shift = K_MAX_SHIFT
+            log.info(f'++++++++++ SHIFT SETTING: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
+                     f'- sell_count: {self.sell_count} ++++++++++')
+        elif self.balance_total_needed:
+            # force sell side => shift to the left (down)
+            mp_shift = -100.0
+            buy_fee = PT_BUY_FEE * ( 1 + K_AUGMENTED_FEE)
+            sell_fee = PT_SELL_FEE * ( 1 + K_AUGMENTED_FEE)
+            log.info(f'++++++++++ FORCED SELL SIDE: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
+                     f'- sell_count: {self.sell_count} ++++++++++')
+        elif self.balance_amount_needed:
+            # force buy side => balance to the right (up)
+            mp_shift = 100.0
+            buy_fee = PT_BUY_FEE * ( 1 + K_AUGMENTED_FEE)
+            sell_fee = PT_SELL_FEE * ( 1 + K_AUGMENTED_FEE)
+            log.info(f'++++++++++ FORCED BUY SIDE: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
+                     f'- sell_count: {self.sell_count} ++++++++++')
+
         mp = cmp + mp_shift
         d = dict(
             mp=mp,
             nab=PT_NET_AMOUNT_BALANCE,
             s1_qty=PT_S1_AMOUNT,
-            buy_fee=PT_BUY_FEE,
-            sell_fee=PT_SELL_FEE,
+            buy_fee=buy_fee,
+            sell_fee=sell_fee,
             geb=PT_GROSS_EUR_BALANCE
         )
         return d, mp_shift == 0  # return TRue if no shift
@@ -315,7 +352,7 @@ class Session:
 
     def quit(self):
         print('********** CANCELLING ALL PLACED ORDERS **********')
-        self.market.cancel_all_placed_orders(self.placed)
+        self.market.cancel_orders(self.placed)
 
         # check for correct cancellation of all orders
         btc_bal = self.market.get_asset_balance(asset='BTC',
@@ -330,6 +367,17 @@ class Session:
             log.info(f'LOCKED BALANCE CHECK CORRECT: btc_balance: {btc_bal} - eur_balance: {eur_bal}')
 
         self.market.stop()
+
+    @staticmethod
+    def get_balance_for_list(orders: List[Order]) -> (float, float, float):
+        balance_amount = 0.0
+        balance_total = 0.0
+        balance_commission = 0.0
+        for order in orders:
+            balance_amount += order.get_signed_amount()
+            balance_total += order.get_signed_total()
+            balance_commission += order.bnb_commission
+        return balance_amount, balance_total, balance_commission
 
     @staticmethod
     def get_test_order() -> Order:

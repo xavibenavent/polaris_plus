@@ -38,4 +38,9 @@ def get_compensation(
     s1_qty = a / b
     b1_qty = qty_bal + s1_qty
 
+    n1 = (1 + sell_fee) / (1-buy_fee)
+    n2 = qty_bal / (1 - buy_fee)
+    s1_qty = (price_bal + b1_p * n2) / (s1_p - b1_p * n1)
+    b1_qty = s1_qty * n1 + n2
+
     return s1_p, b1_p, s1_qty, b1_qty
