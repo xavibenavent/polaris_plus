@@ -1,6 +1,7 @@
 # pp_climanager.py
 
 from src.pp_session import Session
+from src.pp_account_balance import AccountBalance
 
 
 class CLIManager:
@@ -90,18 +91,12 @@ class CLIManager:
         eur_per_btc = 50000.0  # self.session.market.get_cmp(symbol='BTCEUR')
         btc_per_bnb = 0.02  # self.session.market.get_cmp(symbol='BNBBTC')
 
-        initial_eur_to_btc = self.session.initial_ab.s2.get_total() / eur_per_btc
-        initial_bnb_to_btc = self.session.initial_ab.bnb.get_total() * btc_per_bnb
-        initial_btc_equivalent = self.session.initial_ab.s1.get_total() + initial_eur_to_btc + initial_bnb_to_btc
+        initial = self.session.initial_ab.get_btc_equivalent()
+        current = self.session.current_ab.get_btc_equivalent()
+        diff = current - initial
 
-        current_eur_to_btc = self.session.current_ab.s2.get_total() / eur_per_btc
-        current_bnb_to_btc = self.session.current_ab.bnb.get_total() * btc_per_bnb
-        current_btc_equivalent = self.session.current_ab.s1.get_total() + current_eur_to_btc + current_bnb_to_btc
-
-        diff = current_btc_equivalent - initial_btc_equivalent
-
-        print(f'btc equivalent amount:     initial: {initial_btc_equivalent:12,.8f} '
-              f'- current: {current_btc_equivalent:12,.8f} - net balance: {diff:12,.8f} [BTC]')
+        print(f'btc equivalent amount:     initial: {initial:12,.8f} '
+              f'- current: {current:12,.8f} - net balance: {diff:12,.8f} [BTC]')
 
     def create_market_order(self) -> None:
         order = self.session.market.client.order_market_buy(

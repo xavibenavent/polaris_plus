@@ -4,6 +4,9 @@ from typing import Dict
 
 log = logging.getLogger('log')
 
+B_EUR_PER_BTC = 50000.0
+B_BTC_PER_BNB = 0.012
+
 
 class AssetBalance:
     def __init__(self, name: str, free: float = 0.0, locked: float = 0.0, tag='no tag', precision=8):
@@ -106,3 +109,11 @@ class AccountBalance:
         self.s1.log_print()
         self.s2.log_print()
         self.bnb.log_print()
+
+    def get_btc_equivalent(self) -> float:
+        initial_eur_to_btc = self.s2.get_total() / B_EUR_PER_BTC
+        initial_bnb_to_btc = self.bnb.get_total() * B_BTC_PER_BNB
+        initial_btc_equivalent = self.s1.get_total() + initial_eur_to_btc + initial_bnb_to_btc
+        return initial_btc_equivalent
+
+
