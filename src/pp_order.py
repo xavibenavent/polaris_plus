@@ -13,6 +13,7 @@ K_ACTIVATION_DISTANCE = 25.0
 
 class OrderStatus(Enum):
     MONITOR = 1
+    TO_BE_PLACED = 6
     PLACED = 2
     TRADED = 3
     CANCELED = 4

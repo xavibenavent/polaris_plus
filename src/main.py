@@ -26,7 +26,8 @@ if __name__ == '__main__':
     # setup command line arguments
     parser = argparse.ArgumentParser()
     # parser.add_argument('--conf', type=str, required=False)
-    parser.add_argument('--client_mode', type=str, required=False)
+    parser.add_argument('--client_mode', type=str, required=False, default='binance')
+    parser.add_argument('--new_master_session', type=bool, required=False, default=False)
     arg = parser.parse_args()
 
     XBLogger()
@@ -40,7 +41,7 @@ if __name__ == '__main__':
         sys.exit(f'no valid client mode passed to main: {arg.client_mode}')
 
     # create session
-    session = Session(client_mode=client_mode)
+    session = Session(client_mode=client_mode,new_master_session=arg.new_master_session)
 
     clim = CLIManager(session=session)
     clim.start()

@@ -16,54 +16,59 @@ class OrdersBook:
         # e = True
         # if e:
         #     raise AssertionError
-        self.orders = []
-        self.buy = []
-        self.sell = []
+        self.monitor = []
+        self.placed = []
 
         self.dbm = dbm
         self.table = table
 
         # add each order to its appropriate list
         for order in orders:
-            # self.add_order(order)
-            self.orders.append(order)
+            self.monitor.append(order)
 
     def add_order(self, order: Order) -> None:
-        self.orders.append(order)
-        # if order.k_side == k_binance.SIDE_BUY:
-        #     self.buy.append(order)
-        # else:
-        #     self.sell.append(order)
+        self.monitor.append(order)
 
     def remove_order(self, order: Order) -> None:
-        self.orders.remove(order)
-        # if order.k_side == k_binance.SIDE_BUY:
-        #     self.buy.remove(order)
-        # else:
-        #     self.sell.remove(order)
+        self.monitor.remove(order)
+
+    def place_order(self, order: Order) -> None:
+        if order in self.monitor:
+            self.monitor.remove(order)
+            self.placed.append(order)
+            # in session, once placement confirmed, will be set to status PLACED
+            order.set_status(OrderStatus.TO_BE_PLACED)
+        else:
+            log.critical(f'trying to place an order not found in the monitor list: {order}')
+
+    def place_back_order(self, order: Order) -> None:
+        if order in self.placed:
+            self.placed.remove(order)
+            self.monitor.append(order)
+            order.set_status(OrderStatus.MONITOR)
+        else:
+            log.critical(f'trying to place back to monitor an order not found in the placed list: {order}')
 
     def get_all_orders(self) -> List[Order]:
-        # return self.buy + self.sell
-        return self.orders
+        return self.monitor
 
     def get_order(self, uid: str) -> Order:
         # for order in self.get_all_orders():
-        for order in orders:
+        for order in self.monitor:
             if order.uid == uid:
                 return order
 
     def count(self) -> int:
-        # return len(self.get_all_orders())
-        return len(self.orders)
+        return len(self.monitor)
 
-    def buy_count(self) -> int:
-        return len(self.buy)
+    # def buy_count(self) -> int:
+    #     return len(self.buy)
+    #
+    # def sell_count(self) -> int:
+    #     return len(self.sell)
 
-    def sell_count(self) -> int:
-        return len(self.sell)
-
-    def get_side_diff(self) -> int:
-        return self.sell_count() - self.buy_count()
+    # def get_side_diff(self) -> int:
+    #     return self.sell_count() - self.buy_count()
 
     def compensate_order(self, order: Order, ref_mp: float, ref_gap: float, buy_fee: float, sell_fee: float) -> None:
         pass
@@ -105,12 +110,12 @@ class OrdersBook:
                 uid=order.uid
             )
             # add new orders to appropriate list
-            self.orders.append(b1)
-            self.orders.append(s1)
+            self.monitor.append(b1)
+            self.monitor.append(s1)
             # self.buy.append(b1)
             # self.sell.append(s1)
             # delete original order from list
-            self.orders.remove(order)
+            self.monitor.remove(order)
             # self.remove_order(order)
             # delete original order from pending_orders table
             self.dbm.delete_order(order=order, table=self.table)

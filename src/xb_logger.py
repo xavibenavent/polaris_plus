@@ -12,7 +12,7 @@ class XBLogger:
         ch = logging.FileHandler(filename='src/log/polaris.log', mode='w')
 
         # setup output string
-        s1 = '%(levelname)-8s'
+        s1 = '%(filename)-20s, %(funcName)-25s, %(levelname)-8s'
         s2 = '- %(message)s'
         format_s = s1 + s2
 

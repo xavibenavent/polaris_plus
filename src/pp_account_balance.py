@@ -1,6 +1,7 @@
 # pp_account_balance.py
 import logging
 from typing import Dict
+from icecream import ic
 
 log = logging.getLogger('log')
 
@@ -106,6 +107,7 @@ class AccountBalance:
         log.info(self.bnb)
 
     def log_print(self) -> None:
+        ic('check')
         self.s1.log_print()
         self.s2.log_print()
         self.bnb.log_print()

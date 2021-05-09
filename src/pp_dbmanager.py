@@ -11,7 +11,7 @@ log = logging.getLogger('log')
 
 
 class DBManager:
-    def __init__(self, db_name: str, order_tables: List[str]):
+    def __init__(self, db_name: str, order_tables: List[str], new_master_session: bool):
         self.db_name = db_name
         self.conn = DBManager.create_connection(file_name=db_name)
         self.cursor = self.conn.cursor()
@@ -19,6 +19,11 @@ class DBManager:
         # create tables if not exist
         for table in order_tables:
             self.create_table(table=table)
+
+        # create session table if not exists
+        if new_master_session:
+            self.drop_session_table()
+        self.create_session_table()
 
     def __del__(self):
         print('closing cursor and connection...')
@@ -114,6 +119,71 @@ class DBManager:
                     );
                 """
         return query
+
+    def add_session(self, session: dict):
+        try:
+            c = self.cursor
+            value_tuple = (
+                session.get('session_id'),
+                session.get('btc'),
+                session.get('eur'),
+                session.get('bnb'),
+                session.get('btc_equivalent')
+            )
+            c.execute(f'insert into session_balance values (?, ?, ?, ?, ?)', value_tuple)
+            self.conn.commit()
+        except Error as e:
+            log.critical(e)
+
+    def get_last_session(self) -> Optional[dict]:
+        s = None
+        session = None
+        try:
+            c = self.cursor
+            query = 'select * from session_balance order by session_id desc limit 1;'
+            rows = c.execute(query).fetchall()
+            # convert each row to order
+            for row in rows:
+                s = row
+            if s:
+                session = dict(session_id=s[0], btc=s[1], eur=s[2], bnb=s[3], btc_equivalent=s[4])
+            return session
+        except Error as e:
+            log.critical(e)
+        return s
+
+    def create_session_table(self) -> None:
+        try:
+            c = self.cursor
+            query = self.get_session_creation_query()
+            c.execute(query)
+            self.conn.commit()
+        except Error as e:
+            log.critical(e)
+
+
+    @staticmethod
+    def get_session_creation_query() -> str:
+        query = """
+                    create table if not exists session_balance
+                    (
+                        session_id text,
+                        btc real,
+                        eur real,
+                        bnb real,
+                        btc_equivalent real
+                    );
+                """
+        return query
+
+    def drop_session_table(self) -> None:
+        try:
+            c = self.cursor
+            query = 'drop table if exists session_balance;'
+            c.execute(query)
+            self.conn.commit()
+        except Error as e:
+            log.critical(e)
 
     @staticmethod
     def create_connection(file_name: str) -> Optional[Connection]:
