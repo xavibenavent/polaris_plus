@@ -28,18 +28,18 @@ K_MAX_SHIFT = 50.0
 K_ORDER_PRICE_BUFFER = 5.0  # not used
 K_AUGMENTED_FEE = 10 / 100
 
-B_TOTAL_BUFFER = 1000.0  # remaining guaranteed EUR balance
-B_AMOUNT_BUFFER = 0.02  # remaining guaranteed BTC balance
+B_TOTAL_BUFFER = 2000.0  # remaining guaranteed EUR balance
+B_AMOUNT_BUFFER = 0.04  # remaining guaranteed BTC balance
 
 # one placement per cycle control flag
 K_ONE_PLACE_PER_CYCLE_MODE = True
 
 # pt creation
 PT_CREATED_COUNT_MAX = 500  # max number of pt created per session
-PT_CMP_CYCLE_COUNT = 20  # approximately secs (cmp update elapsed time)
+PT_CMP_CYCLE_COUNT = 30  # approximately secs (cmp update elapsed time)
 
-PT_NET_AMOUNT_BALANCE = 0.000010
-PT_S1_AMOUNT = 0.01
+PT_NET_AMOUNT_BALANCE = 0.000020
+PT_S1_AMOUNT = 0.022
 PT_BUY_FEE = 0.09 / 100
 PT_SELL_FEE = 0.09 / 100
 PT_GROSS_EUR_BALANCE = 0.0
@@ -150,10 +150,10 @@ class Session:
                 # cancel order in Binance
                 self.market.cancel_orders(orders=[order])
 
-    @staticmethod
-    def move_order(order: Order, from_list: List[Order], to_list: List[Order]) -> None:
-        from_list.remove(order)
-        to_list.append(order)
+    # @staticmethod
+    # def move_order(order: Order, from_list: List[Order], to_list: List[Order]) -> None:
+    #     from_list.remove(order)
+    #     to_list.append(order)
 
     def order_traded_callback(self, uid: str, order_price: float, bnb_commission: float) -> None:
         print(f'********** ORDER TRADED:    price: {order_price} [EUR] - commission: {bnb_commission} [BNB]')
@@ -180,6 +180,10 @@ class Session:
                 self.orders_book.placed.remove(order)
                 # add to traded list
                 self.traded.append(order)
+                # get & log global balance
+                amount, total, commission = self.get_balance_for_list(self.traded)
+                log.info('========== GLOBAL BALANCE ==========')
+                log.info(f'amount: {amount} - total: {total} - commission: {commission}')
 
     def account_balance_callback(self, ab: AccountBalance) -> None:
         self.current_ab = ab
@@ -200,13 +204,15 @@ class Session:
         # if not enough balance, it returns False and the balance needed
         is_balance_enough = False
         balance_needed = 0.0
+        self.balance_amount_needed = False
+        self.balance_total_needed = False
         # compare allowance with needed depending on the order side
         if order.k_side == k_binance.SIDE_BUY:
             balance_allowance = self.current_ab.get_free_price_s2()
             balance_needed = order.get_total()
             if (balance_allowance - balance_needed) > B_TOTAL_BUFFER:
                 is_balance_enough = True
-                self.balance_total_needed = False
+                # self.balance_total_needed = False
             else:
                 # force next pt to be market in sell side
                 self.balance_total_needed = True
@@ -215,7 +221,7 @@ class Session:
             balance_needed = order.amount
             if (balance_allowance - balance_needed) > B_AMOUNT_BUFFER:
                 is_balance_enough = True
-                self.balance_amount_needed = False
+                # self.balance_amount_needed = False
             else:
                 # force next pt to be market in buy side
                 self.balance_amount_needed = True
@@ -256,8 +262,10 @@ class Session:
         sell_fee = PT_SELL_FEE
         if not self.balance_amount_needed and not self.balance_total_needed:
             mp_shift = (self.sell_count - self.buy_count) * K_MINIMUM_SHIFT_STEP
-            if abs(mp_shift) > K_MAX_SHIFT:
+            if mp_shift > K_MAX_SHIFT:
                 mp_shift = K_MAX_SHIFT
+            elif mp_shift < - K_MAX_SHIFT:
+                mp_shift = - K_MAX_SHIFT
             log.info(f'++++++++++ SHIFT SETTING: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
                      f'- sell_count: {self.sell_count} ++++++++++')
         elif self.balance_total_needed:
@@ -387,17 +395,17 @@ class Session:
             balance_commission += order.bnb_commission
         return balance_amount, balance_total, balance_commission
 
-    @staticmethod
-    def get_test_order() -> Order:
-        order = Order(
-            session_id='S_20210502_2200',
-            order_id='XAVI BENAVENT',
-            pt_id='PT_000008',
-            k_side=k_binance.SIDE_SELL,
-            price=48_150.0,
-            amount=0.001,
-        )
-        return order
+    # @staticmethod
+    # def get_test_order() -> Order:
+    #     order = Order(
+    #         session_id='S_20210502_2200',
+    #         order_id='XAVI BENAVENT',
+    #         pt_id='PT_000008',
+    #         k_side=k_binance.SIDE_SELL,
+    #         price=48_150.0,
+    #         amount=0.001,
+    #     )
+    #     return order
 
     @staticmethod
     def get_dbm(new_master_session: bool) -> DBManager:

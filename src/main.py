@@ -2,6 +2,7 @@
 
 import sys
 import os
+import threading
 import inspect
 import argparse
 import logging
@@ -19,6 +20,12 @@ from src.pp_market import Market
 from src.pp_session import Session
 from src.xb_logger import XBLogger
 from src.pp_climanager import CLIManager
+from src.sockets.server import Server
+
+
+def start_server(clm: CLIManager):
+    while True:
+        server = Server(clm=clm)
 
 
 # Press the green button in the gutter to run the script.
@@ -44,4 +51,9 @@ if __name__ == '__main__':
     session = Session(client_mode=client_mode,new_master_session=arg.new_master_session)
 
     clim = CLIManager(session=session)
+
+    # create server for remote control
+    x = threading.Thread(target=start_server, args=(clim,))
+    x.start()
+
     clim.start()
