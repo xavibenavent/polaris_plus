@@ -4,6 +4,7 @@ import logging
 import sys
 from icecream import ic
 from datetime import datetime
+from enum import Enum
 
 from typing import List, Optional
 from binance import enums as k_binance
@@ -40,11 +41,16 @@ PT_CMP_CYCLE_COUNT = 30  # approximately secs (cmp update elapsed time)
 
 PT_NET_AMOUNT_BALANCE = 0.000020
 PT_S1_AMOUNT = 0.022
-PT_BUY_FEE = 0.09 / 100
-PT_SELL_FEE = 0.09 / 100
+PT_BUY_FEE = 0.08 / 100
+PT_SELL_FEE = 0.08 / 100
 PT_GROSS_EUR_BALANCE = 0.0
 
 COMPENSATION_GAP = 500.0  # applied gap for compensated orders
+
+
+class QuitMode(Enum):
+    CANCEL_ALL_PLACED = 1
+    PLACE_ALL_PENDING = 2
 
 
 class Session:
@@ -101,6 +107,10 @@ class Session:
         else:
             sys.exit()
 
+        self.last_cmp = 0.0
+        self.ticker_count = 0
+        self.partial_traded_orders_count = 0
+
     def get_account_balance(self, tag: str) -> AccountBalance:
         btc_bal = self.market.get_asset_balance(asset='BTC', tag=tag)
         eur_bal = self.market.get_asset_balance(asset='EUR', tag=tag, p=2)
@@ -111,10 +121,19 @@ class Session:
     # ********** socket callback functions **********
 
     def symbol_ticker_callback(self, cmp: float) -> None:
+        # create first pt
+        if self.ticker_count == 0 and cmp > 30000.0:
+            self.create_new_pt(cmp=cmp)
+
         # update cmp count to control timely pt creation
         self.cmp_count += 1
+        self.ticker_count += 1
+
+        self.last_cmp = cmp
 
         # 1. check conditions for new pt creation
+        # TODO: currently, it is always False and a new pt is created after an order
+        # has been traded
         if self.new_pt_permission_granted and self.is_new_pt_allowed():
             # 1. creation: (s: MONITOR, t: pending_orders, l: monitor)
             self.create_new_pt(cmp=cmp)
@@ -150,6 +169,30 @@ class Session:
                 # cancel order in Binance
                 self.market.cancel_orders(orders=[order])
 
+        # check for possible compensations
+        for order in self.orders_book.monitor:
+            # TODO: revise magic number
+            # if it is equal or greater, it means it has been compensated twice
+            if len(order.pt_id) < len('PT_000000-C-L-R-C'):
+                if order.get_distance(cmp=cmp) > 250:
+                    if len(order.pt_id) == len('PT_000000-C-L') and order.get_distance(cmp=cmp) > 450:
+                        # before compensating for the second time, the order is split
+                        self.orders_book.split_order(order=order, d=25)
+                        # for splitting of one order
+                        self.partial_traded_orders_count -= 1
+
+                    elif len(order.pt_id) == len('PT_000000') or len(order.pt_id) == len('PT_000000-C-L-R'):
+                        is_compensated = self.orders_book.compensate_order(
+                            order=order,
+                            ref_mp=cmp,
+                            ref_gap=90.0,
+                            buy_fee=0.0008,
+                            sell_fee=0.0008)
+                        if is_compensated:
+                            # for compensation of one order
+                            self.partial_traded_orders_count -= 1
+                            # for splitting of two orders
+                            self.partial_traded_orders_count -= 2
     # @staticmethod
     # def move_order(order: Order, from_list: List[Order], to_list: List[Order]) -> None:
     #     from_list.remove(order)
@@ -182,8 +225,41 @@ class Session:
                 self.traded.append(order)
                 # get & log global balance
                 amount, total, commission = self.get_balance_for_list(self.traded)
-                log.info('========== GLOBAL BALANCE ==========')
-                log.info(f'amount: {amount} - total: {total} - commission: {commission}')
+                btceur = self.last_cmp
+                bnbbtc = self.market.get_cmp(symbol='BNBBTC')
+
+                log.info('========== GLOBAL BALANCE (TRADED ORDERS) ==========')
+                log.info(f'amount: {amount:,.8f} - total: {total:,.2f} - commission: {commission:,.8f}')
+                net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
+                log.info('***********************************************************')
+                log.info(f'********** ACTUAL NET BALANCE: {net_balance_btc:,.8f} [BTC] **********')
+                log.info('***********************************************************')
+
+                amount, total, commission = self.get_balance_for_list(self.traded + self.orders_book.get_all_orders())
+                log.info('========== GLOBAL BALANCE (ALL ORDERS) ==========')
+                log.info(f'amount: {amount:,.8f} - total: {total:,.2f} - commission: {commission:,.8f}')
+                net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
+                log.info(f'========== net balance: {net_balance_btc:,.8f} [BTC] ==========')
+
+                # TODO: this is the new concept in the strategy
+                # create new pt every two orders traded
+                self.partial_traded_orders_count += 1
+                log.info(f'partial traded orders count: {self.partial_traded_orders_count}')
+                log.info(f'orders traded: {len(self.traded)}')
+                # TODO: check magic number (to constant)
+                if self.pt_created_count < 5:
+                    self.pt_created_count += 1
+                    self.create_new_pt(cmp=self.last_cmp)
+                    self.partial_traded_orders_count = 0
+                elif self.partial_traded_orders_count >= 2:
+                    self.pt_created_count += 1
+                    self.create_new_pt(cmp=self.last_cmp)
+                    self.partial_traded_orders_count = 0
+                else:
+                    log.info('no new pt created after the last traded order')
+
+                log.info(f'pt created count: {self.pt_created_count}')
+
 
     def account_balance_callback(self, ab: AccountBalance) -> None:
         self.current_ab = ab
@@ -193,12 +269,14 @@ class Session:
     # ********** check methods **********
 
     def is_new_pt_allowed(self) -> bool:
-        result = False
-        if self.pt_created_count < PT_CREATED_COUNT_MAX:
-            if self.cmp_count > PT_CMP_CYCLE_COUNT:
-                self.cmp_count = 0
-                result = True
-        return result
+        # TODO: check final strategy
+        # result = False
+        # if self.pt_created_count < PT_CREATED_COUNT_MAX:
+        #     if self.cmp_count > PT_CMP_CYCLE_COUNT:
+        #         self.cmp_count = 0
+        #         result = True
+        return False
+        # return result
 
     def is_balance_enough(self, order: Order) -> (bool, float):
         # if not enough balance, it returns False and the balance needed
@@ -268,20 +346,21 @@ class Session:
                 mp_shift = - K_MAX_SHIFT
             log.info(f'++++++++++ SHIFT SETTING: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
                      f'- sell_count: {self.sell_count} ++++++++++')
-        elif self.balance_total_needed:
-            # force sell side => shift to the left (down)
-            mp_shift = -100.0
-            buy_fee = PT_BUY_FEE * (1 + K_AUGMENTED_FEE)
-            sell_fee = PT_SELL_FEE * (1 + K_AUGMENTED_FEE)
-            log.info(f'++++++++++ FORCED SELL SIDE: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
-                     f'- sell_count: {self.sell_count} ++++++++++')
-        elif self.balance_amount_needed:
-            # force buy side => balance to the right (up)
-            mp_shift = 100.0
-            buy_fee = PT_BUY_FEE * (1 + K_AUGMENTED_FEE)
-            sell_fee = PT_SELL_FEE * (1 + K_AUGMENTED_FEE)
-            log.info(f'++++++++++ FORCED BUY SIDE: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
-                     f'- sell_count: {self.sell_count} ++++++++++')
+        # TODO: asses whether to keep in this way
+        # elif self.balance_total_needed:
+        #     # force sell side => shift to the left (down)
+        #     mp_shift = -100.0
+        #     buy_fee = PT_BUY_FEE * (1 + K_AUGMENTED_FEE)
+        #     sell_fee = PT_SELL_FEE * (1 + K_AUGMENTED_FEE)
+        #     log.info(f'++++++++++ FORCED SELL SIDE: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
+        #              f'- sell_count: {self.sell_count} ++++++++++')
+        # elif self.balance_amount_needed:
+        #     # force buy side => balance to the right (up)
+        #     mp_shift = 100.0
+        #     buy_fee = PT_BUY_FEE * (1 + K_AUGMENTED_FEE)
+        #     sell_fee = PT_SELL_FEE * (1 + K_AUGMENTED_FEE)
+        #     log.info(f'++++++++++ FORCED BUY SIDE: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
+        #              f'- sell_count: {self.sell_count} ++++++++++')
 
         mp = cmp + mp_shift
         d = dict(
@@ -324,7 +403,7 @@ class Session:
         else:
             order_id = 'SHIFTED'
 
-        self.pt_created_count += 1
+        # self.pt_created_count += 1
         pt_id = f'PT_{self.pt_created_count:06}'
 
         # get perfect trade
@@ -354,9 +433,15 @@ class Session:
             )
         return b1, s1
 
-    def quit(self):
-        print('********** CANCELLING ALL PLACED ORDERS **********')
-        self.market.cancel_orders(self.orders_book.placed)
+    def quit(self, quit_mode: QuitMode):
+        # action depending upon quit mode
+        if quit_mode == QuitMode.CANCEL_ALL_PLACED:
+            print('********** CANCELLING ALL PLACED ORDERS **********')
+            self.market.cancel_orders(self.orders_book.placed)
+        elif quit_mode == QuitMode.PLACE_ALL_PENDING:
+            print('********** PLACE ALL PENDING ORDERS **********')
+            for order in self.orders_book.monitor:
+                self.market.place_order(order)
 
         # check for correct cancellation of all orders
         btc_bal = self.market.get_asset_balance(asset='BTC',
@@ -394,18 +479,6 @@ class Session:
             balance_total += order.get_signed_total()
             balance_commission += order.bnb_commission
         return balance_amount, balance_total, balance_commission
-
-    # @staticmethod
-    # def get_test_order() -> Order:
-    #     order = Order(
-    #         session_id='S_20210502_2200',
-    #         order_id='XAVI BENAVENT',
-    #         pt_id='PT_000008',
-    #         k_side=k_binance.SIDE_SELL,
-    #         price=48_150.0,
-    #         amount=0.001,
-    #     )
-    #     return order
 
     @staticmethod
     def get_dbm(new_master_session: bool) -> DBManager:

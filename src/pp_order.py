@@ -48,6 +48,8 @@ class Order:
 
         self.creation = datetime.today()
 
+        self.compensation_count = 0
+
         # set uid depending whether it is first creation or not
         if uid == '':
             self.uid = secrets.token_hex(8)
@@ -59,6 +61,10 @@ class Order:
     def __del__(self):
         log.info(f'** ORDER DESTROYED {self}')
 
+    @staticmethod
+    def get_new_uid() -> str:
+        return secrets.token_hex(8)
+
     def is_ready_for_placement(self, cmp: float, min_dist: float) -> bool:
         return self.get_distance(cmp=cmp) < min_dist
 
@@ -66,7 +72,6 @@ class Order:
         return self.get_distance(cmp=cmp) > max_dist
 
     def get_distance(self, cmp: float) -> float:
-        # return abs(cmp - self._price)
         if self.k_side == k_binance.SIDE_BUY:
             return cmp - self.price
         else:
@@ -104,7 +109,7 @@ class Order:
         self.binance_id = new_id
 
     def __repr__(self):
-        return (f'{self.k_side:4} - {self.session_id} - {self.pt_id:9} - {self.order_id:9} - {self.price:10,.2f} '
+        return (f'{self.k_side:4} - {self.session_id} - {self.pt_id:16} - {self.order_id:9} - {self.price:10,.2f} '
                 f'- {self.amount:12,.6f} - {self.bnb_commission:12,.6f} - {self.status.name:10}'
                 f'- {self.binance_id} - {self.uid} - {self.creation}')
 
