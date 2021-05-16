@@ -1,6 +1,6 @@
 # pp_climanager.py
 
-from src.pp_session import Session
+from src.pp_session import Session, QuitMode
 from src.pp_account_balance import AccountBalance
 
 
@@ -32,10 +32,12 @@ class CLIManager:
             self.show_partial_balance(pending_orders)
         elif user_input == 'q':
             self.quit = True
-            self.session.quit()
+            self.session.quit(quit_mode=QuitMode.PLACE_ALL_PENDING)
         elif user_input == 'q-ncm':
             self.quit = True
             self.session.market.stop()
+        elif user_input == '8':
+            self.session.orders_book.show_orders_graph()
         elif user_input == '9':
             self.create_market_order()
         print(f'\noption selected: [{user_input}]')
@@ -115,6 +117,7 @@ class CLIManager:
                     [3] toggle (on/off) new pt permission
                     [4-t] show partial traded balance
                     [4-p] show partial pending balance
+                    [8] show orders graph
                     [9] place MARKET BUY 0.001 [BTC]
                     
                     [q] quit

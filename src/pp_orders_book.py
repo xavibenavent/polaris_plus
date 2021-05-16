@@ -1,5 +1,7 @@
 # pp_orders_book.py
 
+import pandas as pd
+import plotly.express as px
 import logging
 from typing import List
 from binance import enums as k_binance
@@ -7,6 +9,7 @@ from binance import enums as k_binance
 from src.pp_order import Order, OrderStatus
 from src.xb_pt_calculator import get_compensation
 from src.pp_dbmanager import DBManager
+# from src.pp_session import DATABASE_FILE, PENDING_ORDERS_TABLE
 
 log = logging.getLogger('log')
 
@@ -70,7 +73,15 @@ class OrdersBook:
     # def get_side_diff(self) -> int:
     #     return self.sell_count() - self.buy_count()
 
-    def compensate_order(self, order: Order, ref_mp: float, ref_gap: float, buy_fee: float, sell_fee: float) -> bool:
+    def compensate_order(self,
+                         order: Order,
+                         ref_mp: float,
+                         ref_gap: float,
+                         buy_fee: float,
+                         sell_fee: float) -> List[Order]:
+        # return a list with the two orders resulting from the compensation
+        # if limits are exceeded, then the list is empty
+        new_orders = []
         s1_p, b1_p, s1_qty, b1_qty = get_compensation(
             cmp=ref_mp,
             gap=ref_gap,
@@ -91,105 +102,170 @@ class OrdersBook:
             b1 = Order(
                 session_id=order.session_id,
                 order_id='COMPENSATED',
-                pt_id=order.pt_id + '-C',
+                pt_id=order.pt_id + '-CO',
                 k_side=k_binance.SIDE_BUY,
                 price=b1_p,
                 amount=b1_qty,
                 status=OrderStatus.MONITOR,
-                uid=Order.get_new_uid()
+                uid=Order.get_new_uid(),
+                name=order.name + '-CB-'
             )
             s1 = Order(
                 session_id=order.session_id,
                 order_id='COMPENSATED',
-                pt_id=order.pt_id + '-C',
+                pt_id=order.pt_id + '-CO',
                 k_side=k_binance.SIDE_SELL,
                 price=s1_p,
                 amount=s1_qty,
                 status=OrderStatus.MONITOR,
-                uid=Order.get_new_uid()
+                uid=Order.get_new_uid(),
+                name=order.name + '-CS-'
             )
             # add new orders to appropriate list
-            # self.monitor.append(b1)
-            # self.monitor.append(s1)
+            self.monitor.append(b1)
+            self.monitor.append(s1)
+
             # add new orders to pending_orders table
-            # TODO: check it
-            # self.dbm.add_order(order=b1, table=self.table)
+            self.dbm.add_order(order=b1, table=self.table)
+            self.dbm.add_order(order=s1, table=self.table)
+
             # delete original order from list
             self.monitor.remove(order)
+
             # delete original order from pending_orders table
             self.dbm.delete_order(order=order, table=self.table)
+
             # log
-            # log.info('////////// ORDER COMPENSATED //////////')
-            # log.info(f'initial order:  {order}')
-            # log.info(f'compensated b1: {b1}')
-            # log.info(f'compensated s1: {s1}')
+            log.info('////////// ORDER COMPENSATED //////////')
+            log.info(f'initial order:  {order}')
+            log.info(f'compensated b1: {b1}')
+            log.info(f'compensated s1: {s1}')
 
-            # split into 3 orders
-            self._split_order(order=b1, d=25)
-            self._split_order(order=s1, d=25)
+            new_orders.append(b1)
+            new_orders.append(s1)
 
-            return True
-        # if not compensated
-        order.order_id = 'COMPENSATED_FINAL'
-        return False
+            b1.compensation_count = order.compensation_count + 1
+            s1.compensation_count = order.compensation_count + 1
 
-    def split_order(self, order: Order, d: float):
-        self._split_order(order=order, d=d)
-        # remove now because it is not done in _split_order(), since
-        # the order passed from compensate_order() has not been added to
-        # the monitor list neither to the table
-        self.monitor.remove(order)
-        self.dbm.delete_order(order=order, table=self.table)
+        return new_orders
 
-    def _split_order(self, order: Order, d: float):
-        # create 3 new orders
+    def split_order(self, order: Order, d: float, child_count: int) -> List[Order]:
+        # return a list with the child orders
+        # child_count should be 2 or 3
+        new_orders = []
+
+        log.info('////////// ORDER SPLIT //////////')
+        log.info(f'initial order:  {order}')
+
         left = Order(
             session_id=order.session_id,
-            order_id='COMPENSATED_SPLIT',
+            order_id='CHILD',
             pt_id=order.pt_id + '-L',
             k_side=order.k_side,
             price=order.price - d,
-            amount=order.amount / 2.0,
+            amount=order.amount / child_count,
             status=OrderStatus.MONITOR,
-            uid=Order.get_new_uid()
+            uid=Order.get_new_uid(),
+            name=order.name + 'L'
         )
-        # center = Order(
-        #     session_id=order.session_id,
-        #     order_id='COMPENSATED_SPLIT',
-        #     pt_id=order.pt_id + '-CC',
-        #     k_side=order.k_side,
-        #     price=order.price,
-        #     amount=order.amount / 3.0,
-        #     status=OrderStatus.MONITOR,
-        #     uid=Order.get_new_uid()
-        # )
+        left.split_count = order.split_count + 1
+        # add to monitor and pending_orders table
+        self.monitor.append(left)
+        self.dbm.add_order(order=left, table=self.table)
+        log.info(f'left:   {left}')
+
         right = Order(
             session_id=order.session_id,
-            order_id='COMPENSATED_SPLIT',
+            order_id='CHILD',
             pt_id=order.pt_id + '-R',
             k_side=order.k_side,
             price=order.price + d,
-            amount=order.amount / 2.0,
+            amount=order.amount / child_count,
             status=OrderStatus.MONITOR,
-            uid=Order.get_new_uid()
+            uid=Order.get_new_uid(),
+            name=order.name + 'R'
         )
-
-        # add orders to orders book
-        self.monitor.append(left)
-        # self.monitor.append(center)
+        right.split_count = order.split_count + 1
+        # add to monitor and pending_orders table
         self.monitor.append(right)
-        # delete original order from orders book
-        # self.monitor.remove(order)
-        # add orders to pending orders table
-        # TODO: check it
-        self.dbm.add_order(order=left, table=self.table)
-        # self.dbm.add_order(order=center, table=self.table)
         self.dbm.add_order(order=right, table=self.table)
-        # delete original order from pending orders table
-        # self.dbm.delete_order(order=order, table=self.table)
-        # log
-        log.info('////////// ORDER SPLIT //////////')
-        log.info(f'initial order:  {order}')
-        log.info(f'left:   {left}')
-        # log.info(f'center: {center}')
         log.info(f'right:  {right}')
+
+        if child_count == 3:
+            center = Order(
+                session_id=order.session_id,
+                order_id='CHILD',
+                pt_id=order.pt_id + '-C',
+                k_side=order.k_side,
+                price=order.price,
+                amount=order.amount / child_count,
+                status=OrderStatus.MONITOR,
+                uid=Order.get_new_uid(),
+                name=order.name + 'C'
+            )
+            center.split_count = order.split_count + 1
+            # add to monitor and pending_orders table
+            self.monitor.append(center)
+            self.dbm.add_order(order=center, table=self.table)
+            log.info(f'center: {center}')
+
+        # delete original order from orders book
+        self.monitor.remove(order)
+
+        # delete original order from pending orders table
+        self.dbm.delete_order(order=order, table=self.table)
+
+        return new_orders
+
+    # ********* pandas methods **********
+
+    def show_orders_graph(self):
+        cnx = DBManager.create_connection(file_name='src/database/orders.db')
+        df_po = pd.read_sql_query(f'SELECT * FROM pending_orders', cnx)
+        df_to = pd.read_sql_query(f'SELECT * FROM traded_orders', cnx)
+        df_po['status'] = 'monitor'
+        df_to['status'] = 'traded'
+        dff = df_po.append(other=df_to)
+
+        fig = px.scatter(dff,
+                         x='price',
+                         y='amount',
+                         color='side'
+                         )
+                         # symbol='side',
+                         # color_discrete_map={'BUY': 'green', 'SELL': 'red'},
+                         # symbol_map={'BUY': 'circle', 'SELL': 'cross'})
+        # print(fig)
+        fig.update_traces(marker_size=15)
+        # plot = px.bar(df, x='price', y='amount')
+
+        fig.show()
+
+    @staticmethod
+    def get_depth() -> float:
+        # difference between first sell and buy
+        na, min_sell_price, max_buy_price, nb = OrdersBook.get_price_limits()
+        return min_sell_price - max_buy_price
+
+    @staticmethod
+    def get_span() -> float:
+        # difference between last sell and buy
+        # df = OrdersBook.get_df_from_pending_orders_table()
+        max_sell_price, na, nb, min_buy_price = OrdersBook.get_price_limits()
+        return max_sell_price - min_buy_price
+
+    @staticmethod
+    def get_price_limits() -> (float, float, float, float):
+        df = OrdersBook._get_df_from_pending_orders_table()
+        max_sell_price = df.loc[df['side'] == 'SELL', 'price'].max()
+        min_buy_price = df.loc[df['side'] == 'BUY', 'price'].min()
+        max_buy_price = df.loc[df['side'] == 'BUY', 'price'].max()
+        min_sell_price = df.loc[df['side'] == 'SELL', 'price'].min()
+        return max_sell_price, min_sell_price, max_buy_price, min_buy_price
+
+    @staticmethod
+    def _get_df_from_pending_orders_table() -> pd.DataFrame:
+        # get dataframe from pending orders table in the database
+        cnx = DBManager.create_connection(file_name='src/database/orders.db')
+        df = pd.read_sql_query(f'SELECT * FROM pending_orders', cnx)
+        return df

@@ -31,11 +31,13 @@ class Order:
                  status: OrderStatus = OrderStatus.MONITOR,
                  uid: str = '',
                  bnb_commission=0.0,
-                 binance_id=0  # int
+                 binance_id=0,  # int
+                 name=''
                  ):
         self.session_id = session_id
         self.order_id = order_id
         self.pt_id = pt_id
+        self.name = name
         self.k_side = k_side
         self.price = price
         self.amount = amount
@@ -49,6 +51,10 @@ class Order:
         self.creation = datetime.today()
 
         self.compensation_count = 0
+        self.split_count = 0
+
+        # used to plot, to know at which cycle the order was traded
+        self.traded_cycle = 0
 
         # set uid depending whether it is first creation or not
         if uid == '':
