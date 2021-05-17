@@ -42,7 +42,7 @@ B_AMOUNT_BUFFER = 0.04  # remaining guaranteed BTC balance
 # one placement per cycle control flag
 K_ONE_PLACE_PER_CYCLE_MODE = True
 
-K_INITIAL_PT_TO_CREATE = 5
+K_INITIAL_PT_TO_CREATE = 2
 
 # pt creation
 PT_CREATED_COUNT_MAX = 500  # max number of pt created per session
@@ -186,7 +186,7 @@ class Session:
                     and order.split_count == 0 \
                     and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_FIRST_CHILDREN:  # 250
                 # split into 3 children
-                child_count = 2
+                child_count = 3
                 self.orders_book.split_order(order=order, d=K_DISTANCE_INTER_FIRST_CHILDREN, child_count=child_count)
                 self.partial_traded_orders_count -= (child_count - 1)
             # first compensation
@@ -285,17 +285,21 @@ class Session:
 
     def log_global_balance(self):
         amount, total, commission = self.get_balance_for_list(self.traded)
+        print(f'amount: {amount} total: {total} commission: {commission}')
         btceur = self.last_cmp
         bnbbtc = self.market.get_cmp(symbol='BNBBTC')
         log.info('========== GLOBAL BALANCE (TRADED ORDERS) ==========')
-        log.info(f'amount: {amount:,.8f} - total: {total:,.2f} - commission: {commission:,.8f}')
+        log.info(f'amount: {amount:,.8f} - total: {total:,.2f} - commission: {commission:,.8f} [BNB]')
         net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
         log.info('***********************************************************')
         log.info(f'********** ACTUAL NET BALANCE: {net_balance_btc:,.8f} [BTC] **********')
         log.info('***********************************************************')
-        amount, total, commission = self.get_balance_for_list(self.traded + self.orders_book.get_all_orders())
+        all_orders = self.traded + self.orders_book.get_all_orders()
+        for order in all_orders:
+            log.info({order})
+        amount, total, commission = self.get_balance_for_list(all_orders)
         log.info('========== GLOBAL BALANCE (ALL ORDERS) ==========')
-        log.info(f'amount: {amount:,.8f} - total: {total:,.2f} - commission: {commission:,.8f}')
+        log.info(f'amount: {amount:,.8f} - total: {total:,.2f} - commission: {commission:,.8f} [BNB]')
         net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
         log.info('*************************************************************')
         log.info(f'********** EXPECTED NET BALANCE: {net_balance_btc:,.8f} [BTC] **********')

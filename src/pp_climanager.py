@@ -40,6 +40,10 @@ class CLIManager:
             self.session.orders_book.show_orders_graph()
         elif user_input == '9':
             self.create_market_order()
+        elif user_input == '+':
+            self.session.market.client.update_cmp(step=20.0)
+        elif user_input == '-':
+            self.session.market.client.update_cmp(step=-20.0)
         print(f'\noption selected: [{user_input}]')
 
     @staticmethod
@@ -122,5 +126,6 @@ class CLIManager:
                     
                     [q] quit
                     [q-ncm] quit (non-cancel mode)
+                    [+][-] cmp control
                 """
         return options_msg

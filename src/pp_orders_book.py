@@ -230,13 +230,16 @@ class OrdersBook:
         fig = px.scatter(dff,
                          x='price',
                          y='amount',
-                         color='side'
+                         color='side',
+                         color_discrete_map={'BUY': 'green', 'SELL': 'red'},
+                         symbol='status',
+                         symbol_map={'monitor': 'circle', 'traded': 'cross'}
                          )
                          # symbol='side',
                          # color_discrete_map={'BUY': 'green', 'SELL': 'red'},
                          # symbol_map={'BUY': 'circle', 'SELL': 'cross'})
         # print(fig)
-        fig.update_traces(marker_size=15)
+        fig.update_traces(marker_size=25)
         # plot = px.bar(df, x='price', y='amount')
 
         fig.show()

@@ -22,7 +22,8 @@ from requests.exceptions import ConnectionError, ReadTimeout
 
 from src.pp_order import Order
 from src.pp_account_balance import AccountBalance, AssetBalance
-from src.pp_simulated_client import SimulatedClient
+# from src.pp_simulated_client import SimulatedClient
+from src.pp_fake_client import FakeClient
 
 log = logging.getLogger('log')
 
@@ -45,7 +46,7 @@ class Market:
         self.is_symbol_ticker_on = False  # when off symbol ticker socket U/S
 
         # create client depending on client_mode parameter
-        self.client: Union[Client, SimulatedClient]
+        self.client: Union[Client, FakeClient]
         self.client, self.simulator_mode = self.set_client(client_mode)
 
         # self.start_sockets()
@@ -54,6 +55,9 @@ class Market:
         if not self.simulator_mode:
             # sockets only started in binance mode (not in simulator mode)
             self._start_sockets()
+        else:
+            # self.client.start_cmp_generator()
+            pass
         log.info(f'client initiated in {self.client_mode} mode')
 
     # ********** callback functions **********
@@ -188,9 +192,8 @@ class Market:
 
     # ********** binance configuration methods **********
 
-    @staticmethod
-    def set_client(client_mode) -> (Union[Client, SimulatedClient], bool):
-        client: Union[Client, SimulatedClient]
+    def set_client(self, client_mode) -> (Union[Client, FakeClient], bool):
+        client: Union[Client, FakeClient]
         is_simulator_mode = False
         if client_mode == 'binance':
             api_keys = {
@@ -199,7 +202,10 @@ class Market:
             }
             client = Client(api_keys['key'], api_keys['secret'])
         elif client_mode == 'simulated':
-            client = SimulatedClient()
+            client = FakeClient(
+                user_socket_callback=self.binance_user_socket_callback,
+                symbol_ticker_callback=self.binance_symbol_ticker_callback
+            )
             is_simulator_mode = True
         else:
             log.critical(f'client_mode {client_mode} not accepted')
