@@ -102,7 +102,7 @@ class OrdersBook:
             b1 = Order(
                 session_id=order.session_id,
                 order_id='COMPENSATED',
-                pt_id=order.pt_id + '-CO',
+                pt_id=order.pt_id,  # + '-CO',
                 k_side=k_binance.SIDE_BUY,
                 price=b1_p,
                 amount=b1_qty,
@@ -113,7 +113,7 @@ class OrdersBook:
             s1 = Order(
                 session_id=order.session_id,
                 order_id='COMPENSATED',
-                pt_id=order.pt_id + '-CO',
+                pt_id=order.pt_id,  # + '-CO',
                 k_side=k_binance.SIDE_SELL,
                 price=s1_p,
                 amount=s1_qty,
@@ -160,7 +160,7 @@ class OrdersBook:
         left = Order(
             session_id=order.session_id,
             order_id='CHILD',
-            pt_id=order.pt_id + '-L',
+            pt_id=order.pt_id,  # + '-L',
             k_side=order.k_side,
             price=order.price - d,
             amount=order.amount / child_count,
@@ -177,7 +177,7 @@ class OrdersBook:
         right = Order(
             session_id=order.session_id,
             order_id='CHILD',
-            pt_id=order.pt_id + '-R',
+            pt_id=order.pt_id,  # + '-R',
             k_side=order.k_side,
             price=order.price + d,
             amount=order.amount / child_count,
@@ -195,7 +195,7 @@ class OrdersBook:
             center = Order(
                 session_id=order.session_id,
                 order_id='CHILD',
-                pt_id=order.pt_id + '-C',
+                pt_id=order.pt_id,  # + '-C',
                 k_side=order.k_side,
                 price=order.price,
                 amount=order.amount / child_count,
@@ -235,12 +235,7 @@ class OrdersBook:
                          symbol='status',
                          symbol_map={'monitor': 'circle', 'traded': 'cross'}
                          )
-                         # symbol='side',
-                         # color_discrete_map={'BUY': 'green', 'SELL': 'red'},
-                         # symbol_map={'BUY': 'circle', 'SELL': 'cross'})
-        # print(fig)
         fig.update_traces(marker_size=25)
-        # plot = px.bar(df, x='price', y='amount')
 
         fig.show()
 
