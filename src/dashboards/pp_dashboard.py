@@ -17,7 +17,7 @@ class Dashboard:
         self.app = dash.Dash(__name__)
 
         # note no 'src/' in file_name=
-        cnx = DBManager.create_connection(file_name='database/orders.db')
+        cnx = DBManager.create_connection(file_name='../database/orders.db')
         df_po = pd.read_sql_query(f'SELECT * FROM pending_orders', cnx)
         df_to = pd.read_sql_query(f'SELECT * FROM traded_orders', cnx)
         df_po['status'] = 'monitor'

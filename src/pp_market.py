@@ -23,7 +23,7 @@ from requests.exceptions import ConnectionError, ReadTimeout
 from src.pp_order import Order
 from src.pp_account_balance import AccountBalance, AssetBalance
 # from src.pp_simulated_client import SimulatedClient
-from src.pp_fake_client import FakeClient
+from src.pp_fake_client import FakeClient, FakeCmpMode
 
 log = logging.getLogger('log')
 
@@ -56,7 +56,7 @@ class Market:
             # sockets only started in binance mode (not in simulator mode)
             self._start_sockets()
         else:
-            # self.client.start_cmp_generator()
+            self.client.start_cmp_generator()
             pass
         log.info(f'client initiated in {self.client_mode} mode')
 
@@ -204,7 +204,8 @@ class Market:
         elif client_mode == 'simulated':
             client = FakeClient(
                 user_socket_callback=self.binance_user_socket_callback,
-                symbol_ticker_callback=self.binance_symbol_ticker_callback
+                symbol_ticker_callback=self.binance_symbol_ticker_callback,
+                mode=FakeCmpMode.MODE_GENERATOR
             )
             is_simulator_mode = True
         else:

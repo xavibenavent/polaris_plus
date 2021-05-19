@@ -3,6 +3,8 @@
 import logging
 import time
 from typing import List
+from enum import Enum
+from random import choice
 import threading
 
 from src.pp_account_balance import AssetBalance, AccountBalance
@@ -18,6 +20,13 @@ K_BNBEUR = 450.0
 
 K_INITIAL_CMP = 45_000.0
 
+K_UPDATE_RATE = 1.0  # secs
+
+
+class FakeCmpMode(Enum):
+    MODE_MANUAL = 0
+    MODE_GENERATOR = 1
+
 
 class FakeOrder:
     def __init__(self, uid: str, side: str, price: float, quantity: float):
@@ -31,7 +40,7 @@ class FakeOrder:
 
 
 class FakeClient:
-    def __init__(self, user_socket_callback, symbol_ticker_callback, cmp=K_INITIAL_CMP):
+    def __init__(self, user_socket_callback, symbol_ticker_callback, cmp=K_INITIAL_CMP, mode=FakeCmpMode.MODE_MANUAL):
         self.user_socket_callback = user_socket_callback
         self.symbol_ticker_callback = symbol_ticker_callback
         self.placed_orders: List[FakeOrder] = []
@@ -39,6 +48,9 @@ class FakeClient:
 
         self.cmp = cmp
         self.cmp_sequence = []
+        self.cmp_sequence.append(self.cmp)
+
+        self.mode = mode  # set when creating FakeClient in line 208 of Market
 
         self.account_balance = AccountBalance(
             d=dict(
@@ -48,19 +60,25 @@ class FakeClient:
             ))
 
     def start_cmp_generator(self):
-        x = threading.Thread(target=self._cmp_generator)
-        x.start()
+        if self.mode == FakeCmpMode.MODE_GENERATOR:
+            x = threading.Thread(target=self._cmp_generator)
+            x.start()
+        elif self.mode == FakeCmpMode.MODE_MANUAL:
+            pass
+        else:
+            pass
 
     def _cmp_generator(self):
         while True:
-            time.sleep(3.0)
-            self.cmp += 10.0
+            time.sleep(K_UPDATE_RATE)
+            self.cmp += choice([-30, -20, -10, -5, 0, 5, 10, 20, 30])
+            self.cmp_sequence.append(self.cmp)
+
+            # self.cmp += 10.0
             self._process_cmp_change()
 
     def _process_cmp_change(self):
         self._check_placed_orders_for_trading()
-        # print('cmp: ', self.cmp)
-        log.info(f'cmp: {self.cmp}')
         msg = dict(
             e='24hrTicker',
             c=str(self.cmp)

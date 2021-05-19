@@ -6,6 +6,8 @@ from src.pp_order import Order, OrderStatus
 from src.pp_orders_book import OrdersBook
 from binance import enums as k_binance
 
+import pandas as pd
+
 
 class FakeDBManager:
     def delete_order(self, table: str, order: Order):
@@ -76,6 +78,9 @@ class TestOrdersBook(unittest.TestCase):
     def test_get_all_orders(self):
         all_orders = self.orders_book.get_all_orders()
         self.assertEqual(2, len(all_orders))
+        # check creation of dataframe from objects list
+        df = pd.DataFrame([order.__dict__ for order in all_orders])
+        print(df)
 
     def test_get_order(self):
         order = self.orders_book.get_order(uid='0123456789abcdef')

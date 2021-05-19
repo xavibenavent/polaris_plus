@@ -16,6 +16,7 @@ parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 # print(sys.path)
 
+from src.dashboards.indicator import Dashboard
 from src.pp_market import Market
 from src.pp_session import Session
 from src.xb_logger import XBLogger
@@ -49,6 +50,14 @@ if __name__ == '__main__':
 
     # create session
     session = Session(client_mode=client_mode,new_master_session=arg.new_master_session)
+
+    # create dashboard
+    db = Dashboard(
+        get_last_cmp_callback=session.get_last_cmp_callback,
+        get_pending_orders_callback=session.get_pending_orders_callback,
+        last_cmp=session.last_cmp
+    )
+    db.app.run_server(debug=False, dev_tools_silence_routes_logging=True)
 
     clim = CLIManager(session=session)
 

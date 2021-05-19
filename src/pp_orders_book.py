@@ -220,24 +220,40 @@ class OrdersBook:
     # ********* pandas methods **********
 
     def show_orders_graph(self):
-        cnx = DBManager.create_connection(file_name='src/database/orders.db')
-        df_po = pd.read_sql_query(f'SELECT * FROM pending_orders', cnx)
-        df_to = pd.read_sql_query(f'SELECT * FROM traded_orders', cnx)
-        df_po['status'] = 'monitor'
-        df_to['status'] = 'traded'
-        dff = df_po.append(other=df_to)
+        pass
+        # cnx = DBManager.create_connection(file_name='src/database/orders.db')
+        # df_po = pd.read_sql_query(f'SELECT * FROM pending_orders', cnx)
+        # df_to = pd.read_sql_query(f'SELECT * FROM traded_orders', cnx)
+        # df_po['status'] = 'monitor'
+        # df_to['status'] = 'traded'
+        # dff = df_po.append(other=df_to)
+        #
+        # fig = px.scatter(dff,
+        #                  x='price',
+        #                  y='amount',
+        #                  color='side',
+        #                  color_discrete_map={'BUY': 'green', 'SELL': 'red'},
+        #                  symbol='status',
+        #                  symbol_map={'monitor': 'circle', 'traded': 'cross'}
+        #                  )
+        # fig.update_traces(marker_size=25)
+        #
+        # fig.show()
 
-        fig = px.scatter(dff,
-                         x='price',
-                         y='amount',
-                         color='side',
-                         color_discrete_map={'BUY': 'green', 'SELL': 'red'},
-                         symbol='status',
-                         symbol_map={'monitor': 'circle', 'traded': 'cross'}
-                         )
-        fig.update_traces(marker_size=25)
-
-        fig.show()
+    def get_pending_orders_df(self) -> pd.DataFrame:
+        # create dataframe from orders list
+        df_monitor = pd.DataFrame([order.__dict__ for order in self.monitor])
+        df_monitor['status'] = 'monitor'
+        df_placed = pd.DataFrame([order.__dict__ for order in self.placed])
+        df_placed['status'] = 'placed'
+        # append both dataframes
+        df_pending = df_monitor.append(other=df_placed)
+        # remove columns
+        df_pending.drop(columns=['session_id', 'order_id', 'bnb_commission', 'uid'], inplace=True)
+        # format float columns
+        df_pending['amount'] = df_pending['amount'].map('{:,.8f}'.format)
+        df_pending['price'] = df_pending['price'].map('{:,.2f}'.format)
+        return df_pending
 
     @staticmethod
     def get_depth() -> float:

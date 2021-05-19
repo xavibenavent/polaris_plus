@@ -5,6 +5,7 @@ import sys
 from icecream import ic
 from datetime import datetime
 from enum import Enum
+import pandas as pd
 
 from typing import List, Optional
 from binance import enums as k_binance
@@ -15,6 +16,7 @@ from src.pp_dbmanager import DBManager
 from src.pp_account_balance import AccountBalance
 from src.xb_pt_calculator import get_pt_values
 from src.pp_orders_book import OrdersBook
+# from src.dashboards.indicator import Dashboard
 
 log = logging.getLogger('log')
 
@@ -89,6 +91,8 @@ class Session:
         self.sell_count = 0
         self.cmp_count = 0
 
+        self.dashboard = None
+
         self.new_pt_permission_granted = True
         # self.one_place_per_cycle_mode = True
         # self.new_placement_allowed = True
@@ -121,9 +125,18 @@ class Session:
         else:
             sys.exit()
 
-        self.last_cmp = 0.0
+        self.last_cmp = self.market.get_cmp('BTCEUR')
+
         self.ticker_count = 0
         self.partial_traded_orders_count = 0
+
+    # ********** dashboard callback **********
+
+    def get_last_cmp_callback(self) -> float:
+        return self.last_cmp
+
+    def get_pending_orders_callback(self) -> pd.DataFrame:
+        return self.orders_book.get_pending_orders_df()
 
     def get_account_balance(self, tag: str) -> AccountBalance:
         btc_bal = self.market.get_asset_balance(asset='BTC', tag=tag)

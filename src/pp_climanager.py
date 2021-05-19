@@ -38,6 +38,7 @@ class CLIManager:
             self.session.market.stop()
         elif user_input == '8':
             self.session.orders_book.show_orders_graph()
+            # self.session.dashboard.
         elif user_input == '9':
             self.create_market_order()
         elif user_input == '+':
