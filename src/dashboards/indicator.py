@@ -11,10 +11,12 @@ import dash_bootstrap_components as dbc
 import dash_daq as daq
 import plotly.graph_objects as go
 import dash_table
+import dash_table.FormatTemplate as FormatTemplate
+from dash_table.Format import Format, Symbol, Sign, Scheme, Prefix
 
 from src.pp_dbmanager import DBManager
 
-K_INTERVAL = 10.0
+K_INTERVAL = 2.0
 
 
 class Dashboard:
@@ -26,26 +28,76 @@ class Dashboard:
         self.get_pending_orders_callback = get_pending_orders_callback
         self.cmps = [last_cmp]
 
-        self.app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+        self.app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
 
         pending_orders_df: pd.DataFrame = self.get_pending_orders_callback()
+        table_df = pending_orders_df.sort_values(by=['price'], ascending=False)
+        print(table_df)
+        print(table_df.describe())
 
         # app layout
         self.app.layout = html.Div([
-            html.H1("Session dashboard", style={'text-align': 'center'}),
-            html.Br(),
-            dash_table.DataTable(
-                id='table',
-                columns=[{'name': i, 'id': i} for i in pending_orders_df],
-                data=pending_orders_df.to_dict('records'),
-            ),
-            daq.Gauge(
-                id='my-daq-gauge',
-                min=0,
-                max=10,
-                value=6
-            ),
-            html.Br(),
+            dbc.Row([
+                dbc.Col(html.H1("Session dashboard", style={'text-align': 'center'}))
+            ]),
+            dbc.Row([
+                dbc.Col(
+                    dash_table.DataTable(
+                        id='table',
+                        # columns=[{'name': i, 'id': i} for i in table_df],  # each column can be format individually
+                        columns=[
+                            {'id': 'pt_id', 'name': 'pt id', 'type': 'text'},
+                            {'id': 'name', 'name': 'name', 'type': 'text'},
+                            {'id': 'k_side', 'name': 'side', 'type': 'text'},
+                            {'id': 'price', 'name': 'price', 'type': 'numeric',
+                             'format': Format(
+                                 scheme=Scheme.fixed,
+                                 precision=2,
+                                 symbol=Symbol.yes,
+                                 symbol_suffix=' €',
+                             ), 'width': '80px'},
+                            {'id': 'amount', 'name': 'amount', 'type': 'numeric',
+                             'format': Format(
+                                precision=8,
+                                scheme=Scheme.fixed)},
+                            {'id': 'status', 'name': 'status', 'type': 'text'}
+                        ],
+                        # data=table_df.to_dict('records'),
+                        data = {},
+                        page_action='none',  # disable pagination (default is after 250 rows)
+                        style_cell={'fontSize': 18, 'font-family': 'monospace', 'backgroundColor': 'black'},
+                        style_table={'height': '500px', 'overflowY': 'auto', 'backgroundColor': 'black'},  # set table height and vertical scroll
+                        style_data={
+                            'width': '80px',
+                            'maxWidth': '80px',
+                            'minWidth': '80px',
+                            'border': 'none'
+                        },
+                        style_header={'border': 'none'},
+                        fixed_rows={'headers': True},
+                        hidden_columns=['status', 'k_side'],
+                        style_data_conditional=[
+                            {
+                                'if': {
+                                    'filter_query': '{k_side} = SELL',
+                                    'column_id': 'price'
+                                },
+                                'color': 'Tomato'
+                            },
+                            {
+                                'if': {
+                                    'filter_query': '{k_side} = BUY',
+                                    'column_id': 'price'
+                                },
+                                'color': 'Green'
+                            },
+
+                        ]
+                    ),  width={'size': 4, 'offset': 1}
+                ),
+                dbc.Col(daq.Gauge(id='my-daq-gauge', min=0, max=10, value=6),
+                        width=2)
+            ]),
             dcc.Graph(
                 id='indicator-graph',
                 figure={},
@@ -63,7 +115,18 @@ class Dashboard:
 
             # component to update the app every n seconds
             dcc.Interval(id='update', n_intervals=0, interval=1000 * K_INTERVAL)
-        ])
+        ],
+        # style={'background-color': 'tomato'})
+        )
+
+        @self.app.callback(
+            Output('table', 'data'),
+            Input('update', 'n_intervals')
+        )
+        def update_table(timer):
+            pending_orders_df = self.get_pending_orders_callback()
+            table_df = pending_orders_df.sort_values(by=['price'], ascending=False)
+            return table_df.to_dict('records')
 
         @self.app.callback(
             Output('indicator-graph', 'figure'),
