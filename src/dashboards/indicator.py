@@ -18,22 +18,26 @@ from src.pp_dbmanager import DBManager
 
 K_INTERVAL = 2.0
 
+K_BACKGROUND_COLOR = '#272b30'
+
 
 class Dashboard:
     def __init__(self,
                  get_last_cmp_callback,
-                 get_pending_orders_callback,
+                 get_orders_callback,
                  last_cmp):
         self.get_last_cmp_callback = get_last_cmp_callback
-        self.get_pending_orders_callback = get_pending_orders_callback
+        self.get_orders_callback = get_orders_callback
         self.cmps = [last_cmp]
 
-        self.app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
+        self.app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SLATE])
 
-        pending_orders_df: pd.DataFrame = self.get_pending_orders_callback()
-        table_df = pending_orders_df.sort_values(by=['price'], ascending=False)
-        print(table_df)
-        print(table_df.describe())
+        # # get orders
+        pending_orders_df: pd.DataFrame = self.get_orders_callback()
+        if not pending_orders_df.empty:
+            table_df = pending_orders_df.sort_values(by=['price'], ascending=False)
+        # print(table_df)
+        # print(table_df.describe())
 
         # app layout
         self.app.layout = html.Div([
@@ -42,61 +46,9 @@ class Dashboard:
             ]),
             dbc.Row([
                 dbc.Col(
-                    dash_table.DataTable(
-                        id='table',
-                        # columns=[{'name': i, 'id': i} for i in table_df],  # each column can be format individually
-                        columns=[
-                            {'id': 'pt_id', 'name': 'pt id', 'type': 'text'},
-                            {'id': 'name', 'name': 'name', 'type': 'text'},
-                            {'id': 'k_side', 'name': 'side', 'type': 'text'},
-                            {'id': 'price', 'name': 'price', 'type': 'numeric',
-                             'format': Format(
-                                 scheme=Scheme.fixed,
-                                 precision=2,
-                                 symbol=Symbol.yes,
-                                 symbol_suffix=' €',
-                             ), 'width': '80px'},
-                            {'id': 'amount', 'name': 'amount', 'type': 'numeric',
-                             'format': Format(
-                                precision=8,
-                                scheme=Scheme.fixed)},
-                            {'id': 'status', 'name': 'status', 'type': 'text'}
-                        ],
-                        # data=table_df.to_dict('records'),
-                        data = {},
-                        page_action='none',  # disable pagination (default is after 250 rows)
-                        style_cell={'fontSize': 18, 'font-family': 'monospace', 'backgroundColor': 'black'},
-                        style_table={'height': '500px', 'overflowY': 'auto', 'backgroundColor': 'black'},  # set table height and vertical scroll
-                        style_data={
-                            'width': '80px',
-                            'maxWidth': '80px',
-                            'minWidth': '80px',
-                            'border': 'none'
-                        },
-                        style_header={'border': 'none'},
-                        fixed_rows={'headers': True},
-                        hidden_columns=['status', 'k_side'],
-                        style_data_conditional=[
-                            {
-                                'if': {
-                                    'filter_query': '{k_side} = SELL',
-                                    'column_id': 'price'
-                                },
-                                'color': 'Tomato'
-                            },
-                            {
-                                'if': {
-                                    'filter_query': '{k_side} = BUY',
-                                    'column_id': 'price'
-                                },
-                                'color': 'Green'
-                            },
-
-                        ]
-                    ),  width={'size': 4, 'offset': 1}
+                    children=self.get_datatable(),
+                    width={'size': 3, 'offset': 1}
                 ),
-                dbc.Col(daq.Gauge(id='my-daq-gauge', min=0, max=10, value=6),
-                        width=2)
             ]),
             dcc.Graph(
                 id='indicator-graph',
@@ -124,9 +76,12 @@ class Dashboard:
             Input('update', 'n_intervals')
         )
         def update_table(timer):
-            pending_orders_df = self.get_pending_orders_callback()
-            table_df = pending_orders_df.sort_values(by=['price'], ascending=False)
-            return table_df.to_dict('records')
+            df = self.get_orders_callback()
+            if not df.empty:
+                dff = df.sort_values(by=['price'], ascending=False)
+                return dff.to_dict('records')
+            else:
+                return {}
 
         @self.app.callback(
             Output('indicator-graph', 'figure'),
@@ -191,6 +146,68 @@ class Dashboard:
             ))
             fig.update_layout(height=500, width=500)
             return fig
+
+    def get_datatable(self):
+        return dash_table.DataTable(
+            id='table',
+            # columns=[{'name': i, 'id': i} for i in table_df],  # each column can be format individually
+            columns=[
+                {'id': 'pt_id', 'name': 'pt id', 'type': 'text'},
+                {'id': 'name', 'name': 'name', 'type': 'text'},
+                {'id': 'k_side', 'name': 'side', 'type': 'text'},
+                {'id': 'price', 'name': 'price', 'type': 'numeric',
+                 'format': Format(
+                     scheme=Scheme.fixed,
+                     precision=2,
+                     symbol=Symbol.yes,
+                     symbol_suffix=' €',
+                 )},
+                {'id': 'amount', 'name': 'amount', 'type': 'numeric',
+                 'format': Format(
+                     precision=8,
+                     scheme=Scheme.fixed)},
+                {'id': 'status', 'name': 'status', 'type': 'text'}
+            ],
+            # data=table_df.to_dict('records'),
+            data={},
+            page_action='none',  # disable pagination (default is after 250 rows)
+            # style_cell={'fontSize': 18, 'font-family': 'monospace', 'backgroundColor': 'gray-900'},
+            style_cell={'backgroundColor': K_BACKGROUND_COLOR},  # #222 is DARKLY gray-900 (_variables.scss)
+            style_table={'height': '500px', 'overflowY': 'auto', 'backgroundColor': K_BACKGROUND_COLOR},
+            # set table height and vertical scroll
+            style_data={
+                'width': '70px',
+                'maxWidth': '70px',
+                'minWidth': '30px',
+                'border': 'none'
+            },
+            style_header={'border': 'none'},
+            fixed_rows={'headers': True},
+            hidden_columns=['status', 'k_side'],
+            style_data_conditional=[
+                {
+                    'if': {
+                        'filter_query': '{k_side} = SELL',
+                        'column_id': 'price'
+                    },
+                    'color': 'Tomato'
+                },
+                {
+                    'if': {
+                        'filter_query': '{k_side} = BUY',
+                        'column_id': 'price'
+                    },
+                    'color': 'Green'
+                },
+                {
+                    'if': {
+                        'filter_query': '{status} = traded',
+                        'column_id': 'price'
+                    },
+                    'color': 'yellow'
+                },
+            ]
+        )
 
     def get_last_cmps_df(self) -> pd.DataFrame:
         # get last cmp

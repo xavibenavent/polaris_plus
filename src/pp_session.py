@@ -1,6 +1,7 @@
 # pp_session.py
 
 import logging
+import os
 import sys
 from icecream import ic
 from datetime import datetime
@@ -102,6 +103,13 @@ class Session:
         self.balance_total_needed = False
         self.balance_amount_needed = False
 
+        # TODO: remove when finishing with fake orders
+        # remove orders.db file
+        try:
+            os.remove('src/database/orders.db')
+        except FileNotFoundError as e:
+            log.debug('orders.db file not removed because it does not exist')
+
         # create the database manager and fill pending orders list
         self.dbm = self.get_dbm(new_master_session=new_master_session)
 
@@ -119,11 +127,12 @@ class Session:
         # get filters that will be checked before placing an order
         self.symbol_filters = self.market.get_symbol_info(symbol='BTCEUR')
 
+        # TODO: uncomment it when finishing with fake orders
         # show pending orders and already placed orders for user validation
-        if self.is_initial_state_validated():
-            self.market.start_sockets()
-        else:
-            sys.exit()
+        # if self.is_initial_state_validated():
+        self.market.start_sockets()
+        # else:
+        #     sys.exit()
 
         self.last_cmp = self.market.get_cmp('BTCEUR')
 
@@ -135,8 +144,19 @@ class Session:
     def get_last_cmp_callback(self) -> float:
         return self.last_cmp
 
-    def get_pending_orders_callback(self) -> pd.DataFrame:
-        return self.orders_book.get_pending_orders_df()
+    def get_orders_callback(self) -> pd.DataFrame:
+        # create df for traded orders
+        df_traded = pd.DataFrame([order.__dict__ for order in self.traded])
+        df_traded['status'] = 'traded'
+        # get df for monitor & placed orders
+        df_po = self.orders_book.get_pending_orders_df()
+        # append all
+        all_orders_df = df_po.append(df_traded)
+        # keep only desired columns
+        df = pd.DataFrame()
+        if not all_orders_df.empty:
+            df = all_orders_df[['pt_id', 'name', 'k_side', 'price', 'amount', 'status']]  # it must be a names list
+        return df
 
     def get_account_balance(self, tag: str) -> AccountBalance:
         btc_bal = self.market.get_asset_balance(asset='BTC', tag=tag)

@@ -248,18 +248,7 @@ class OrdersBook:
         df_placed['status'] = 'placed'
         # append both dataframes
         df_pending = df_monitor.append(other=df_placed)
-        # remove columns
-        # df_pending.drop(
-        #     columns=['session_id', 'order_id', 'bnb_commission', 'uid', 'binance_id', 'creation', 'compensation_count',
-        #              'activation_distance', 'split_count', 'traded_cycle'],
-        #     inplace=True)
-        # in this case better keeping columns than dropping
-        df = df_pending[['pt_id', 'name', 'k_side', 'price', 'amount', 'status']]  # it must be a names list
-
-        # format float columns
-        # dff = df[df['amount'].map('{:,.8f}'.format)]
-        # dfff = dff[dff['price'].map('{:,.2f}'.format)]
-        return df
+        return df_pending
 
     @staticmethod
     def get_depth() -> float:

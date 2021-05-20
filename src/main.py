@@ -54,7 +54,7 @@ if __name__ == '__main__':
     # create dashboard
     db = Dashboard(
         get_last_cmp_callback=session.get_last_cmp_callback,
-        get_pending_orders_callback=session.get_pending_orders_callback,
+        get_orders_callback=session.get_orders_callback,
         last_cmp=session.last_cmp
     )
     db.app.run_server(debug=False, dev_tools_silence_routes_logging=True)

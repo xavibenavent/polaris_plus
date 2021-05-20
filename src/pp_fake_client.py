@@ -70,11 +70,11 @@ class FakeClient:
 
     def _cmp_generator(self):
         while True:
+            # fake random trade
             time.sleep(K_UPDATE_RATE)
-            self.cmp += choice([-30, -20, -10, -5, 0, 5, 10, 20, 30])
+            self.cmp += choice([-20, -10, -5, 0, 5, 10, 20])
             self.cmp_sequence.append(self.cmp)
 
-            # self.cmp += 10.0
             self._process_cmp_change()
 
     def _process_cmp_change(self):
@@ -86,6 +86,7 @@ class FakeClient:
         self.symbol_ticker_callback(msg)
 
     def update_cmp(self, step: float):
+        # when in MANUAL mode the cmp is update from command line interface
         self.cmp += step
         print(f'new cmp: ', self.cmp)
         self._process_cmp_change()
