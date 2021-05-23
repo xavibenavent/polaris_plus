@@ -32,11 +32,11 @@ K_MAX_SHIFT = 50.0
 K_ORDER_PRICE_BUFFER = 5.0  # not used
 K_AUGMENTED_FEE = 10 / 100
 
-K_DISTANCE_FOR_FIRST_CHILDREN = 250.0
+K_DISTANCE_FOR_FIRST_CHILDREN = 150  # 250.0
 K_DISTANCE_INTER_FIRST_CHILDREN = 50.0
-K_DISTANCE_FIRST_COMPENSATION = 300.0
+K_DISTANCE_FIRST_COMPENSATION = 200  # 300.0
 K_DISTANCE_SECOND_COMPENSATION = 450.0
-K_GAP_FIRST_COMPENSATION = 75.0
+K_GAP_FIRST_COMPENSATION = 50  # 75.0
 K_GAP_SECOND_COMPENSATION = 150.0
 
 B_TOTAL_BUFFER = 2000.0  # remaining guaranteed EUR balance
@@ -45,7 +45,7 @@ B_AMOUNT_BUFFER = 0.04  # remaining guaranteed BTC balance
 # one placement per cycle control flag
 K_ONE_PLACE_PER_CYCLE_MODE = True
 
-K_INITIAL_PT_TO_CREATE = 2
+K_INITIAL_PT_TO_CREATE = 1
 
 # pt creation
 PT_CREATED_COUNT_MAX = 500  # max number of pt created per session
@@ -152,13 +152,17 @@ class Session:
         df_po = self.orders_book.get_pending_orders_df()
         # append all
         all_orders_df = df_po.append(df_traded)
+        # add cmp (order-like)
+        cmp_order = dict(pt_id='-', name='-', k_side='BUY', price=self.last_cmp, signed_amount='-',
+                         signed_total='-', status='cmp', bnb_commission='-')
+        df1 = all_orders_df.append(other=cmp_order, ignore_index=True)
         # keep only desired columns
-        df = pd.DataFrame()
-        if not all_orders_df.empty:
-            df = all_orders_df[['pt_id', 'name', 'k_side', 'price', 'amount', 'status']]  # it must be a names list
-        return df
+        desired_columns = ['pt_id', 'name', 'k_side', 'price',
+                           'signed_amount', 'signed_total', 'bnb_commission', 'status']
+        df2 = df1[desired_columns]
+        return df2
 
-    def get_account_balance(self, tag: str) -> AccountBalance:
+    def get_account_balance(self, tag='') -> AccountBalance:
         btc_bal = self.market.get_asset_balance(asset='BTC', tag=tag)
         eur_bal = self.market.get_asset_balance(asset='EUR', tag=tag, p=2)
         bnb_bal = self.market.get_asset_balance(asset='BNB', tag=tag)
@@ -201,6 +205,9 @@ class Session:
                 max_sell_price, min_sell_price, max_buy_price, min_buy_price = OrdersBook.get_price_limits()
                 if abs(cmp - min_sell_price) > 50.0 and abs(cmp - max_buy_price) > 50.0:
                     # create and log new pt
+                    log.info('==============================')
+                    log.info(' created new pt for INACTIVITY')
+                    log.info('==============================')
                     self.create_new_pt(cmp=cmp)  # direct to create_new_pt(), not to assess_new_pt()
                     self.cycles_from_last_trade = 0  # equivalent to trading but without a trade
                     self.partial_traded_orders_count -= 2
@@ -315,6 +322,13 @@ class Session:
         else:
             log.info('no new pt created after the last traded order')
         log.info(f'pt created count: {self.pt_created_count}')
+
+    def get_traded_balance_callback(self) -> float:
+        amount, total, commission = self.get_balance_for_list(self.traded)
+        btceur = self.last_cmp
+        bnbbtc = self.market.get_cmp(symbol='BNBBTC')
+        net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
+        return net_balance_btc
 
     def log_global_balance(self):
         amount, total, commission = self.get_balance_for_list(self.traded)
@@ -469,7 +483,8 @@ class Session:
             order_id = 'SHIFTED'
 
         # self.pt_created_count += 1
-        pt_id = f'PT_{self.pt_created_count:06}'
+        # pt_id = f'PT_{self.pt_created_count:06}'
+        pt_id = f'{self.pt_created_count:03}'
 
         # get perfect trade
         b1_qty, b1_price, s1_price, g = get_pt_values(**dynamic_parameters)

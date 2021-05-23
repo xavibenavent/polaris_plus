@@ -45,6 +45,9 @@ class Order:
         self.bnb_commission = bnb_commission
         self.binance_id = binance_id
 
+        self.signed_amount = self.get_signed_amount()
+        self.signed_total = self.get_signed_total()
+
         # session parameters
         self.activation_distance = K_ACTIVATION_DISTANCE
 
@@ -115,7 +118,7 @@ class Order:
         self.binance_id = new_id
 
     def __repr__(self):
-        return (f'{self.k_side:4} - {self.session_id} - {self.pt_id:11} - {self.name:8} - {self.order_id:9} - {self.price:10,.2f} '
+        return (f'{self.k_side:4} - {self.session_id} - {self.pt_id:11} - {self.name:10} - {self.order_id:12} - {self.price:10,.2f} '
                 f'- {self.amount:12,.6f} - {self.bnb_commission:12,.6f} - {self.status.name:10}'
                 f'- {self.binance_id} - {self.uid} - {self.creation}')
 

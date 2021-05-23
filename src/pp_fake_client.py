@@ -169,8 +169,10 @@ class FakeClient:
             # update account balance
             if order.side == 'BUY':
                 self.account_balance.s2.locked -= order.get_total()
+                self.account_balance.s1.free += order.quantity
             else:
                 self.account_balance.s1.locked -= order.quantity
+                self.account_balance.s2.free += order.get_total()
             self.account_balance.bnb.free -= order.get_total() * K_FEE
             print(f'fee: {order.get_total() * K_FEE}')
             # call binance user socket twice
