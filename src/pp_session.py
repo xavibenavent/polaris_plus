@@ -32,12 +32,14 @@ K_MAX_SHIFT = 50.0
 K_ORDER_PRICE_BUFFER = 5.0  # not used
 K_AUGMENTED_FEE = 10 / 100
 
-K_DISTANCE_FOR_FIRST_CHILDREN = 150  # 250.0
+K_DISTANCE_FOR_FIRST_CHILDREN = 150
+K_DISTANCE_FOR_SECOND_CHILDREN = 300
 K_DISTANCE_INTER_FIRST_CHILDREN = 50.0
+K_DISTANCE_INTER_SECOND_CHILDREN = 50.0
 K_DISTANCE_FIRST_COMPENSATION = 200  # 300.0
-K_DISTANCE_SECOND_COMPENSATION = 450.0
+K_DISTANCE_SECOND_COMPENSATION = 350.0
 K_GAP_FIRST_COMPENSATION = 50  # 75.0
-K_GAP_SECOND_COMPENSATION = 150.0
+K_GAP_SECOND_COMPENSATION = 120.0
 
 B_TOTAL_BUFFER = 2000.0  # remaining guaranteed EUR balance
 B_AMOUNT_BUFFER = 0.04  # remaining guaranteed BTC balance
@@ -48,7 +50,7 @@ K_ONE_PLACE_PER_CYCLE_MODE = True
 K_INITIAL_PT_TO_CREATE = 1
 
 # pt creation
-PT_CREATED_COUNT_MAX = 500  # max number of pt created per session
+PT_CREATED_COUNT_MAX = 100  # max number of pt created per session
 PT_CMP_CYCLE_COUNT = 30  # approximately secs (cmp update elapsed time)
 
 PT_NET_AMOUNT_BALANCE = 0.000020
@@ -137,6 +139,8 @@ class Session:
         self.last_cmp = self.market.get_cmp('BTCEUR')
 
         self.ticker_count = 0
+
+        # the first pt is created always, then 2 trades will be needed to create a new one
         self.partial_traded_orders_count = 0
 
     # ********** dashboard callback **********
@@ -174,7 +178,7 @@ class Session:
 
     def symbol_ticker_callback(self, cmp: float) -> None:
         # 0.1: create first pt
-        if self.ticker_count == 0 and cmp > 30000.0:
+        if self.ticker_count == 0 and cmp > 20000.0:
             self.create_new_pt(cmp=cmp)
 
         # 0.2: update cmp count to control timely pt creation
@@ -209,10 +213,8 @@ class Session:
                     log.info('==============================')
                     log.info(' created new pt for INACTIVITY')
                     log.info('==============================')
-                    self.pt_created_count += 1
                     self.create_new_pt(cmp=cmp)  # direct to create_new_pt(), not to assess_new_pt()
                     self.cycles_from_last_trade = 0  # equivalent to trading but without a trade
-                    self.partial_traded_orders_count -= 2
 
     def check_placed_list_for_move_back(self, cmp: float):
         for order in self.orders_book.placed:
@@ -226,20 +228,42 @@ class Session:
             # first split
             if order.compensation_count == 0 \
                     and order.split_count == 0 \
-                    and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_FIRST_CHILDREN:  # 250
+                    and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_FIRST_CHILDREN:  # 150
                 # split into 3 children
                 child_count = 3
-                self.orders_book.split_order(order=order, d=K_DISTANCE_INTER_FIRST_CHILDREN, child_count=child_count)
+                self.orders_book.split_order(order=order, d=K_DISTANCE_INTER_FIRST_CHILDREN, child_count=child_count)  # 50
                 self.partial_traded_orders_count -= (child_count - 1)
             # first compensation
             elif order.compensation_count == 0 \
                     and order.split_count == 1 \
-                    and order.get_distance(cmp=cmp) > K_DISTANCE_FIRST_COMPENSATION:  # 300
+                    and order.get_distance(cmp=cmp) > K_DISTANCE_FIRST_COMPENSATION:  # 200
                 # compensate
                 self.orders_book.compensate_order(
                     order=order,
                     ref_mp=cmp,
                     ref_gap=K_GAP_FIRST_COMPENSATION,  # 75
+                    buy_fee=PT_BUY_FEE,
+                    sell_fee=PT_SELL_FEE
+                )
+                self.partial_traded_orders_count -= 1
+
+            # second split
+            elif order.compensation_count == 1 \
+                    and order.split_count == 1 \
+                    and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_SECOND_CHILDREN:  # 300
+                # split into 3 children
+                child_count = 3
+                self.orders_book.split_order(order=order, d=K_DISTANCE_INTER_SECOND_CHILDREN, child_count=child_count)  # 50
+                self.partial_traded_orders_count -= (child_count - 1)
+            # second compensation
+            elif order.compensation_count == 1 \
+                    and order.split_count == 2 \
+                    and order.get_distance(cmp=cmp) > K_DISTANCE_SECOND_COMPENSATION:  # 350
+                # compensate
+                self.orders_book.compensate_order(
+                    order=order,
+                    ref_mp=cmp,
+                    ref_gap=K_GAP_SECOND_COMPENSATION,  # 125
                     buy_fee=PT_BUY_FEE,
                     sell_fee=PT_SELL_FEE
                 )
@@ -269,11 +293,6 @@ class Session:
                 # else:
                 #     self.release_balance(balance_needed=balance_needed)
                 # log.critical(f'balance is not enough for placing {order}')
-
-    # @staticmethod
-    # def move_order(order: Order, from_list: List[Order], to_list: List[Order]) -> None:
-    #     from_list.remove(order)
-    #     to_list.append(order)
 
     def order_traded_callback(self, uid: str, order_price: float, bnb_commission: float) -> None:
         print(f'********** ORDER TRADED:    price: {order_price} [EUR] - commission: {bnb_commission} [BNB]')
@@ -311,25 +330,21 @@ class Session:
                 self.log_global_balance()
 
                 # TODO: this is the new concept in the strategy
-                self.assess_new_pt()
+                self.partial_traded_orders_count += 1
+
+                # check whether a new pt is allowed or not
+                if self.pt_created_count < PT_CREATED_COUNT_MAX and self.partial_traded_orders_count >= 0:
+                    # self.pt_created_count += 1
+                    self.create_new_pt(cmp=self.last_cmp)
+                    # self.partial_traded_orders_count -= 2
+                else:
+                    log.info('no new pt created after the last traded order')
+                log.info(f'pt created count: {self.pt_created_count}')
+
+                # self.assess_new_pt()
 
                 # TODO: asses the break
                 # break
-
-    def assess_new_pt(self):
-        # create new pt every two orders traded
-        self.partial_traded_orders_count += 1
-        log.info(f'partial traded orders count: {self.partial_traded_orders_count}')
-        log.info(f'orders traded: {len(self.traded)}')
-        # TODO: check magic number (to constant)
-        if self.pt_created_count < K_INITIAL_PT_TO_CREATE \
-                or self.partial_traded_orders_count >= 2:  # a new pt is created after two traded orders
-            self.pt_created_count += 1
-            self.create_new_pt(cmp=self.last_cmp)
-            self.partial_traded_orders_count = 0
-        else:
-            log.info('no new pt created after the last traded order')
-        log.info(f'pt created count: {self.pt_created_count}')
 
     def get_traded_balance_callback(self) -> float:
         amount, total, commission, btc = self.get_balance_for_list(self.traded)
@@ -384,7 +399,7 @@ class Session:
             if (balance_allowance - balance_needed) > B_TOTAL_BUFFER:
                 is_balance_enough = True
             else:
-                # force next pt to be market in sell side
+                # eur needed => SELL
                 self.balance_total_needed = True
         else:
             balance_allowance = self.current_ab.get_free_amount_s1()
@@ -392,7 +407,7 @@ class Session:
             if (balance_allowance - balance_needed) > B_AMOUNT_BUFFER:
                 is_balance_enough = True
             else:
-                # force next pt to be market in buy side
+                # btc needed => BUY
                 self.balance_amount_needed = True
 
         # log.info(f'$$ BALANCE CHECK $$  allowance: {balance_allowance} - needed: {balance_needed} - enough: {is_balance_enough}')
@@ -417,11 +432,6 @@ class Session:
 
     def release_balance(self, balance_needed: float):
         # TODO: implement it
-        # assess the following:
-        #  1. cancel placed orders
-        #  2. force adequate placement/trading by:
-        #       a) creating new pt
-        #       b) compensating (1->2) existing monitoring orders
         pass
 
     def get_dynamic_parameters(self, cmp: float) -> (dict, bool):
@@ -462,6 +472,16 @@ class Session:
             # add orders to list
             self.orders_book.monitor.append(b1)
             self.orders_book.monitor.append(s1)
+
+            # ********** update control variables **********
+            # increase created counter
+            self.pt_created_count += 1
+            # set pt_id based on created counter
+            pt_id = f'{self.pt_created_count:03}'
+            b1.pt_id = pt_id
+            s1.pt_id = pt_id
+            # set number of trades needed for next pt creation
+            self.partial_traded_orders_count -= 2
         else:
             log.critical('the pt (b1, s1) can not be created:')
             log.critical(f'b1: {b1}')
@@ -480,7 +500,7 @@ class Session:
             order_id = 'SHIFTED'
 
         # set pt_id
-        pt_id = f'{self.pt_created_count:03}'
+        # pt_id = f'{self.pt_created_count:03}'
 
         # get perfect trade
         b1_qty, b1_price, s1_price, g = get_pt_values(**dynamic_parameters)
@@ -492,7 +512,7 @@ class Session:
             b1 = Order(
                 session_id=self.session_id,
                 order_id=order_id,
-                pt_id=pt_id,
+                pt_id='PENDING',
                 k_side=k_binance.SIDE_BUY,
                 price=b1_price,
                 amount=b1_qty,
@@ -505,7 +525,7 @@ class Session:
             s1 = Order(
                 session_id=self.session_id,
                 order_id=order_id,
-                pt_id=pt_id,
+                pt_id='PENDING',
                 k_side=k_binance.SIDE_SELL,
                 price=s1_price,
                 amount=s1_qty,

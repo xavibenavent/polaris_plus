@@ -17,7 +17,7 @@ from dash_daq.LEDDisplay import LEDDisplay
 from src.dashboards import dashboard_aux as daux
 from src.pp_session import Session
 
-K_INTERVAL = 2.0
+K_INTERVAL = 1.0
 
 K_BACKGROUND_COLOR = '#272b30'
 
@@ -55,10 +55,12 @@ class Dashboard:
                         LEDDisplay(id='trades-to-new-pt', label='trades to new pt', value='0', color='SeaGreen'),
                         LEDDisplay(id='traded-balance', label='traded orders balance', value='0',
                                    color='SeaGreen'),
+                        LEDDisplay(id='traded-price-balance', label='traded price balance', value='0',
+                                   color='DarkSeaGreen'),
                         LEDDisplay(id='cycle-count-from-last', label='cycles count from last traded order', value='0',
                                    color='SeaGreen'),
                         html.Br(),
-                        dbc.Button('Create new PT', id='new-pt-button', color='warning', block=True),
+                        dbc.Button('Create new PT', id='new-pt-button', color='success', block=True),
                         html.Span(id="example-output", style={"vertical-align": "middle"})
                     ],
                     width={'size': 2, 'offset': 1}
@@ -102,16 +104,14 @@ class Dashboard:
         ])
 
         # ********** app callbacks **********
-        @self.app.callback(Output('example-output', 'children'), [Input('new-pt-button', 'n_clicks')])
+        @self.app.callback(Output('example-output', 'children'),
+                           [Input('new-pt-button', 'n_clicks')])
         def on_button_click(n):
             if n is None:
                 return 'not clicked yet!'
             else:
-                self.session.pt_created_count += 1
                 self.session.create_new_pt(cmp=session.cmps[-1])  # direct to create_new_pt(), not to assess_new_pt()
-                # self.session.cycles_from_last_trade = 0  # equivalent to trading but without a trade
-                self.session.partial_traded_orders_count -= 2
-                return f'pt_created_count: {self.session.pt_created_count}'
+                return f'pt created with the button: {self.session.pt_created_count}'
 
         @self.app.callback(
             Output('completed-pt-balance-chart', 'figure'), Input('update', 'n_intervals'))
@@ -131,19 +131,21 @@ class Dashboard:
         @self.app.callback(
             Output('trades-to-new-pt', 'value'),
             Output('traded-balance', 'value'),
+            Output('traded-price-balance', 'value'),
             Output('cycle-count-from-last', 'value'),
             Input('update', 'n_intervals')
         )
         def update_led(timer):
             df = self.get_orders_callback()
             # get balance from orders from completed pt
-            btc_balance_completed_pt = daux.get_completed_pt_balance(df=df)
+            btc_balance_completed_pt, eur_balance_completed_pt = daux.get_completed_pt_balance(df=df)
             # balance = self.session.get_traded_balance_callback()
             satoshi_balance = btc_balance_completed_pt * 100_000_000
             trades_to_new_pt = self.session.partial_traded_orders_count
             # return f'{trades_to_new_pt:02.0f}', f'{satoshi_balance:.0f}'
             cycles_from_last = self.session.cycles_from_last_trade
-            return f'{trades_to_new_pt:02.0f}', f'{satoshi_balance:.0f}', f'{cycles_from_last}'
+            return f'{trades_to_new_pt:02.0f}', f'{satoshi_balance:.0f}', \
+                   f'{eur_balance_completed_pt:,.2f}', f'{cycles_from_last}'
 
         @self.app.callback(
             Output('daq-tank-btc', 'value'), Input('update', 'n_intervals')

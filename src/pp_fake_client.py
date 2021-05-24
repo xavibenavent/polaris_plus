@@ -15,12 +15,12 @@ K_INITIAL_BTC = 0.2
 K_INITIAL_BNB = 50.0
 
 K_FEE = 0.0008
-K_BNBBTC = 0.012
-K_BNBEUR = 450.0
+K_BNBBTC = 0.01
+K_BNBEUR = 350.0
 
 K_INITIAL_CMP = 45_000.0
 
-K_UPDATE_RATE = 1.0  # secs
+K_UPDATE_RATE = 0.1  # secs
 
 
 class FakeCmpMode(Enum):
@@ -173,8 +173,11 @@ class FakeClient:
             else:
                 self.account_balance.s1.locked -= order.quantity
                 self.account_balance.s2.free += order.get_total()
-            self.account_balance.bnb.free -= order.get_total() * K_FEE
-            print(f'fee: {order.get_total() * K_FEE}')
+            # eur_commission = order.get_total() * K_FEE
+            btc_commission = order.quantity * K_FEE
+            bnb_commission = btc_commission / K_BNBBTC
+            self.account_balance.bnb.free -= bnb_commission
+            # print(f'fee: {order.get_total() * K_FEE}')
             # call binance user socket twice
             # call for order traded
             self._call_user_socket_order_traded(order=order)
@@ -184,13 +187,15 @@ class FakeClient:
             log.critical(f'trying to trade an order not placed {order.uid}')
 
     def _call_user_socket_order_traded(self, order: FakeOrder):
+        btc_commission = order.quantity * K_FEE
+        bnb_commission = btc_commission / K_BNBBTC
         msg = dict(
             e='executionReport',
             x='TRADE',
             X='FILLED',
             c=order.uid,
             L=str(order.price),
-            n=str(order.get_total() * K_FEE / K_BNBEUR)
+            n=str(bnb_commission)  # n: bnb commission
         )
         self.user_socket_callback(msg)
 

@@ -138,6 +138,7 @@ class OrdersBook:
             # log
             log.info('////////// ORDER COMPENSATED //////////')
             log.info(f'initial order:  {order}')
+            log.info(f'compensation count: {order.compensation_count}')
             log.info(f'compensated b1: {b1}')
             log.info(f'compensated s1: {s1}')
 

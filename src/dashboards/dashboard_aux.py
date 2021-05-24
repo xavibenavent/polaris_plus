@@ -33,7 +33,7 @@ def get_bar_chart(df: pd.DataFrame) -> Figure:
         text='name',
         height=800,
         color_discrete_map={'pending': 'LightCoral', 'traded': 'LightSeaGreen'},
-        range_y=[-8000, 8000],
+        range_y=[-10000, 10000],
         # range_x=[-1, 7],
     )
     fig.update_traces(
@@ -68,13 +68,14 @@ def get_order_tables(df: pd.DataFrame) -> (Figure, Figure):
     return df_pending.to_dict('records'), df_traded.to_dict('records')
 
 
-def get_completed_pt_balance(df: pd.DataFrame) -> float:
+def get_completed_pt_balance(df: pd.DataFrame) -> (float, float):
     # get pt that have been completed
     df_completed_pt = get_completed_pt_df(df)
     # get btc balance as SUM(amount - btc_commission)
-    btc_balance = df_completed_pt.signed_amount.sum() - df_completed_pt.btc_commission.sum()
-    return btc_balance
-
+    btc_balance = df_completed_pt.signed_amount.sum() \
+        - df_completed_pt.btc_commission.sum()  # \
+    eur_balance = df_completed_pt.signed_total.sum()
+    return btc_balance, eur_balance
 
 def get_completed_pt_df(df: pd.DataFrame) -> pd.DataFrame:
     df_pending = df[df.status.isin(['monitor', 'placed'])]
@@ -261,6 +262,105 @@ def get_datatable(table_id: str,
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': buy_color_traded
+            },
+            {
+                'if': {
+                    'filter_query': '{status} = cmp',
+                    'column_id': ['price', 'name', 'pt_id', 'signed_total'],
+                },
+                'color': 'orange'
+            }
+        ],
+        sort_action='native'
+    )
+    return datatable
+
+
+def get_pending_datatable(table_id: str,
+                  data: dict,
+                  buy_color_monitor='MintCream', sell_color_monitor='MintCream',
+                  buy_color_placed='MintCream', sell_color_placed='MintCream'
+                  ):
+    datatable = DataTable(
+        id=table_id,
+        # columns=[{'name': i, 'id': i} for i in table_df],  # each column can be format individually
+        columns=[
+            {'id': 'pt_id', 'name': 'pt id', 'type': 'text'},
+            {'id': 'name', 'name': 'name', 'type': 'text'},
+            {'id': 'price', 'name': 'price', 'type': 'numeric',
+             'format': Format(
+                 scheme=Scheme.fixed,
+                 precision=2,
+                 group=True,
+             )},
+            {'id': 'signed_amount', 'name': 'amount', 'type': 'numeric',
+             'format': Format(
+                 precision=6,
+                 scheme=Scheme.fixed)},
+            {'id': 'signed_total', 'name': 'total', 'type': 'numeric',
+             'format': Format(
+                 precision=2,
+                 scheme=Scheme.fixed,
+                 group=True
+             )},
+            {'id': 'compensation_count', 'name': 'compensation', 'type': 'numeric',
+             'format': Format(
+                 precision=0,
+             )},
+            {'id': 'split_count', 'name': 'split', 'type': 'numeric',
+             'format': Format(
+                 precision=0,
+             )}
+        ],
+        data=data,
+        page_action='none',  # disable pagination (default is after 250 rows)
+        style_table={'height': '800px', 'overflowY': 'auto'},  # , 'backgroundColor': K_BACKGROUND_COLOR},
+        style_cell={'fontSize': 16, 'font-family': 'Arial'},
+        # set table height and vertical scroll
+        style_data={
+            'width': '90px',
+            'maxWidth': '90px',
+            'minWidth': '50px',
+            'border': 'none'
+        },
+        css=[{"selector": ".show-hide", "rule": "display: none"}],  # hide toggle button on top of the table
+        style_header={'border': 'none', 'textAlign': 'center', 'fontSize': 16, 'fontWeight': 'bold'},
+        fixed_rows={'headers': True},
+        hidden_columns=['status', 'k_side'],
+        style_cell_conditional=[
+            {
+                'if': {'column_id': ['pt_id', 'name']},
+                'textAlign': 'center'
+            }
+        ],
+        style_data_conditional=[
+            {
+                'if': {
+                    'filter_query': '{k_side} = SELL && {status} = placed',
+                    'column_id': ['price', 'signed_amount', 'signed_total'],
+                },
+                'color': sell_color_placed
+            },
+            {
+                'if': {
+                    'filter_query': '{k_side} = BUY && {status} = placed',
+                    'column_id': ['price', 'signed_amount', 'signed_total'],
+                },
+                'color': buy_color_placed
+            },
+            {
+                'if': {
+                    'filter_query': '{k_side} = SELL && {status} = monitor',
+                    'column_id': ['price', 'signed_amount', 'signed_total'],
+                },
+                'color': sell_color_monitor
+            },
+            {
+                'if': {
+                    'filter_query': '{k_side} = BUY && {status} = monitor',
+                    'column_id': ['price', 'signed_amount', 'signed_total'],
+                },
+                'color': buy_color_monitor
             },
             {
                 'if': {
