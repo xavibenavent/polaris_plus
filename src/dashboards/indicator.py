@@ -71,7 +71,7 @@ class Dashboard:
             ]),
             dbc.Row([
                 dbc.Col(
-                    children=daux.get_datatable(
+                    children=daux.get_pending_datatable(
                         data=self.get_orders_callback().to_dict('records'),
                         table_id='table',
                         buy_color_monitor='LightSeaGreen', sell_color_monitor='LightCoral',

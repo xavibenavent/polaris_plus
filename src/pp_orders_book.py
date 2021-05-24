@@ -146,7 +146,9 @@ class OrdersBook:
             new_orders.append(s1)
 
             b1.compensation_count = order.compensation_count + 1
+            b1.split_count = order.split_count
             s1.compensation_count = order.compensation_count + 1
+            s1.split_count = order.split_count
 
         return new_orders
 
@@ -170,6 +172,7 @@ class OrdersBook:
             name=order.name + 'L'
         )
         left.split_count = order.split_count + 1
+        left.compensation_count = order.compensation_count
         # add to monitor and pending_orders table
         self.monitor.append(left)
         self.dbm.add_order(order=left, table=self.table)
@@ -187,6 +190,7 @@ class OrdersBook:
             name=order.name + 'R'
         )
         right.split_count = order.split_count + 1
+        right.compensation_count = order.compensation_count
         # add to monitor and pending_orders table
         self.monitor.append(right)
         self.dbm.add_order(order=right, table=self.table)
@@ -205,6 +209,7 @@ class OrdersBook:
                 name=order.name + 'C'
             )
             center.split_count = order.split_count + 1
+            center.compensation_count = order.compensation_count
             # add to monitor and pending_orders table
             self.monitor.append(center)
             self.dbm.add_order(order=center, table=self.table)

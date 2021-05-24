@@ -158,12 +158,14 @@ class Session:
         all_orders_df = df_po.append(df_traded)
         # add cmp (order-like)
         cmp_order = dict(pt_id='-', name='-', k_side='BUY', price=self.last_cmp, signed_amount='-',
-                         signed_total='-', status='cmp', bnb_commission='-', btc_commission='-')
+                         signed_total='-', status='cmp', bnb_commission='-', btc_commission='-',
+                         compensation_count='-', split_count='-')
         df1 = all_orders_df.append(other=cmp_order, ignore_index=True)
         # keep only desired columns
         desired_columns = ['pt_id', 'name', 'k_side', 'price',
                            'signed_amount', 'signed_total',
-                           'bnb_commission', 'status', 'btc_commission']
+                           'bnb_commission', 'status', 'btc_commission',
+                           'compensation_count', 'split_count']
         df2 = df1[desired_columns]
         return df2
 
