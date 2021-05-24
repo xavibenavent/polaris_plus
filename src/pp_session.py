@@ -154,11 +154,12 @@ class Session:
         all_orders_df = df_po.append(df_traded)
         # add cmp (order-like)
         cmp_order = dict(pt_id='-', name='-', k_side='BUY', price=self.last_cmp, signed_amount='-',
-                         signed_total='-', status='cmp', bnb_commission='-')
+                         signed_total='-', status='cmp', bnb_commission='-', btc_commission='-')
         df1 = all_orders_df.append(other=cmp_order, ignore_index=True)
         # keep only desired columns
         desired_columns = ['pt_id', 'name', 'k_side', 'price',
-                           'signed_amount', 'signed_total', 'bnb_commission', 'status']
+                           'signed_amount', 'signed_total',
+                           'bnb_commission', 'status', 'btc_commission']
         df2 = df1[desired_columns]
         return df2
 
@@ -197,17 +198,18 @@ class Session:
         self.check_monitor_list_for_placing(cmp=cmp)
 
         # 5. check inactivity
-        if self.cycles_from_last_trade > 300:  # TODO: magic number (5')
+        if self.cycles_from_last_trade > 200:  # TODO: magic number (5')
             # get depth
             depth = OrdersBook.get_depth()
             if depth > 200.0:
                 # get relative cmp position inside depth
                 max_sell_price, min_sell_price, max_buy_price, min_buy_price = OrdersBook.get_price_limits()
-                if abs(cmp - min_sell_price) > 50.0 and abs(cmp - max_buy_price) > 50.0:
+                if abs(cmp - min_sell_price) > 30.0 and abs(cmp - max_buy_price) > 30.0:
                     # create and log new pt
                     log.info('==============================')
                     log.info(' created new pt for INACTIVITY')
                     log.info('==============================')
+                    self.pt_created_count += 1
                     self.create_new_pt(cmp=cmp)  # direct to create_new_pt(), not to assess_new_pt()
                     self.cycles_from_last_trade = 0  # equivalent to trading but without a trade
                     self.partial_traded_orders_count -= 2
@@ -288,7 +290,10 @@ class Session:
                 else:
                     self.sell_count += 1
                 # set commission and price
-                order.bnb_commission = bnb_commission
+                # order.bnb_commission = bnb_commission
+                order.set_bnb_commission(
+                    commission=bnb_commission,
+                    bnbbtc_rate=self.market.get_cmp(symbol='BNBBTC'))
                 order.price = order_price
                 # log
                 log.info(f'********** ORDER TRADED ********** {order}')
@@ -308,6 +313,9 @@ class Session:
                 # TODO: this is the new concept in the strategy
                 self.assess_new_pt()
 
+                # TODO: asses the break
+                # break
+
     def assess_new_pt(self):
         # create new pt every two orders traded
         self.partial_traded_orders_count += 1
@@ -324,14 +332,18 @@ class Session:
         log.info(f'pt created count: {self.pt_created_count}')
 
     def get_traded_balance_callback(self) -> float:
-        amount, total, commission = self.get_balance_for_list(self.traded)
+        amount, total, commission, btc = self.get_balance_for_list(self.traded)
         btceur = self.last_cmp
         bnbbtc = self.market.get_cmp(symbol='BNBBTC')
-        net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
+        # net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
+        net_balance_btc = amount - btc
         return net_balance_btc
 
+    def modified_traded_balance_callback(selfself) -> float:
+        pass
+
     def log_global_balance(self):
-        amount, total, commission = self.get_balance_for_list(self.traded)
+        amount, total, commission, btc = self.get_balance_for_list(self.traded)
         print(f'amount: {amount} total: {total} commission: {commission}')
         btceur = self.last_cmp
         bnbbtc = self.market.get_cmp(symbol='BNBBTC')
@@ -344,7 +356,7 @@ class Session:
         all_orders = self.traded + self.orders_book.get_all_orders()
         for order in all_orders:
             log.info({order})
-        amount, total, commission = self.get_balance_for_list(all_orders)
+        amount, total, commission, btc = self.get_balance_for_list(all_orders)
         log.info('========== GLOBAL BALANCE (ALL ORDERS) ==========')
         log.info(f'amount: {amount:,.8f} - total: {total:,.2f} - commission: {commission:,.8f} [BNB]')
         net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
@@ -425,21 +437,6 @@ class Session:
                 mp_shift = - K_MAX_SHIFT
             log.info(f'++++++++++ SHIFT SETTING: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
                      f'- sell_count: {self.sell_count} ++++++++++')
-        # TODO: asses whether to keep in this way
-        # elif self.balance_total_needed:
-        #     # force sell side => shift to the left (down)
-        #     mp_shift = -100.0
-        #     buy_fee = PT_BUY_FEE * (1 + K_AUGMENTED_FEE)
-        #     sell_fee = PT_SELL_FEE * (1 + K_AUGMENTED_FEE)
-        #     log.info(f'++++++++++ FORCED SELL SIDE: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
-        #              f'- sell_count: {self.sell_count} ++++++++++')
-        # elif self.balance_amount_needed:
-        #     # force buy side => balance to the right (up)
-        #     mp_shift = 100.0
-        #     buy_fee = PT_BUY_FEE * (1 + K_AUGMENTED_FEE)
-        #     sell_fee = PT_SELL_FEE * (1 + K_AUGMENTED_FEE)
-        #     log.info(f'++++++++++ FORCED BUY SIDE: mp_shift: {mp_shift} - buy_count: {self.buy_count} '
-        #              f'- sell_count: {self.sell_count} ++++++++++')
 
         mp = cmp + mp_shift
         d = dict(
@@ -482,8 +479,7 @@ class Session:
         else:
             order_id = 'SHIFTED'
 
-        # self.pt_created_count += 1
-        # pt_id = f'PT_{self.pt_created_count:06}'
+        # set pt_id
         pt_id = f'{self.pt_created_count:03}'
 
         # get perfect trade
@@ -502,8 +498,10 @@ class Session:
                 amount=b1_qty,
                 name='b1'
             )
-        if Order.is_filter_passed(filters=self.symbol_filters, qty=s1_qty, price=s1_price):
+        else:
+            log.critical(f'trying to create an order that do not meet limits: {dynamic_parameters}')
 
+        if Order.is_filter_passed(filters=self.symbol_filters, qty=s1_qty, price=s1_price):
             s1 = Order(
                 session_id=self.session_id,
                 order_id=order_id,
@@ -513,6 +511,9 @@ class Session:
                 amount=s1_qty,
                 name='s1'
             )
+        else:
+            log.critical(f'trying to create an order that do not meet limits: {dynamic_parameters}')
+
         return b1, s1
 
     def quit(self, quit_mode: QuitMode):
@@ -556,11 +557,13 @@ class Session:
         balance_amount = 0.0
         balance_total = 0.0
         balance_commission = 0.0
+        comm_btc = 0.0
         for order in orders:
             balance_amount += order.get_signed_amount()
             balance_total += order.get_signed_total()
             balance_commission += order.bnb_commission
-        return balance_amount, balance_total, balance_commission
+            comm_btc += order.btc_commission
+        return balance_amount, balance_total, balance_commission, comm_btc
 
     @staticmethod
     def get_dbm(new_master_session: bool) -> DBManager:

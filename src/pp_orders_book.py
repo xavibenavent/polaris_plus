@@ -254,7 +254,9 @@ class OrdersBook:
     def get_depth() -> float:
         # difference between first sell and buy
         na, min_sell_price, max_buy_price, nb = OrdersBook.get_price_limits()
-        return min_sell_price - max_buy_price
+        # if there are no buy sells then both buy values are 0
+        # the same applies for sell side
+        return abs(min_sell_price - max_buy_price)
 
     @staticmethod
     def get_span() -> float:
@@ -265,11 +267,21 @@ class OrdersBook:
 
     @staticmethod
     def get_price_limits() -> (float, float, float, float):
+        # default return values
+        max_sell_price = 0
+        min_sell_price = 0
+        max_buy_price = 0
+        min_buy_price = 0
+        # get dataframe
         df = OrdersBook._get_df_from_pending_orders_table()
-        max_sell_price = df.loc[df['side'] == 'SELL', 'price'].max()
-        min_buy_price = df.loc[df['side'] == 'BUY', 'price'].min()
-        max_buy_price = df.loc[df['side'] == 'BUY', 'price'].max()
-        min_sell_price = df.loc[df['side'] == 'SELL', 'price'].min()
+        # get max and min only if the element in a side is greater than 0
+        if df[df['side'] == 'SELL'].shape[0] > 0:
+            max_sell_price = df.loc[df['side'] == 'SELL', 'price'].max()
+            min_sell_price = df.loc[df['side'] == 'SELL', 'price'].min()
+        if df[df['side'] == 'BUY'].shape[0] > 0:
+            min_buy_price = df.loc[df['side'] == 'BUY', 'price'].min()
+            max_buy_price = df.loc[df['side'] == 'BUY', 'price'].max()
+        # return 0 if no orders in one side (for each side)
         return max_sell_price, min_sell_price, max_buy_price, min_buy_price
 
     @staticmethod

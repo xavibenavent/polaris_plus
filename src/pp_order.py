@@ -43,6 +43,7 @@ class Order:
         self.amount = amount
         self.status = status
         self.bnb_commission = bnb_commission
+        self.btc_commission = 0.0
         self.binance_id = binance_id
 
         self.signed_amount = self.get_signed_amount()
@@ -106,8 +107,9 @@ class Order:
     def get_signed_total(self) -> float:
         return - (self.price * self.get_signed_amount())
 
-    def set_bnb_commission(self, commission: float) -> None:
+    def set_bnb_commission(self, commission: float, bnbbtc_rate: float) -> None:
         self.bnb_commission = commission
+        self.btc_commission = self.bnb_commission * bnbbtc_rate
 
     def set_status(self, status: OrderStatus):
         old_status = self.status
