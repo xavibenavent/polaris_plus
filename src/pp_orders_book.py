@@ -78,10 +78,10 @@ class OrdersBook:
                          ref_mp: float,
                          ref_gap: float,
                          buy_fee: float,
-                         sell_fee: float) -> List[Order]:
+                         sell_fee: float) -> bool:
         # return a list with the two orders resulting from the compensation
         # if limits are exceeded, then the list is empty
-        new_orders = []
+        # new_orders = []
         s1_p, b1_p, s1_qty, b1_qty = get_compensation(
             cmp=ref_mp,
             gap=ref_gap,
@@ -142,15 +142,16 @@ class OrdersBook:
             log.info(f'compensated b1: {b1}')
             log.info(f'compensated s1: {s1}')
 
-            new_orders.append(b1)
-            new_orders.append(s1)
+            # new_orders.append(b1)
+            # new_orders.append(s1)
 
             b1.compensation_count = order.compensation_count + 1
             b1.split_count = order.split_count
             s1.compensation_count = order.compensation_count + 1
             s1.split_count = order.split_count
-
-        return new_orders
+            return True
+        return False
+        # return new_orders
 
     def split_order(self, order: Order, d: float, child_count: int) -> List[Order]:
         # return a list with the child orders

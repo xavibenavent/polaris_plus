@@ -32,13 +32,15 @@ K_MAX_SHIFT = 50.0
 K_ORDER_PRICE_BUFFER = 5.0  # not used
 K_AUGMENTED_FEE = 10 / 100
 
-K_DISTANCE_FOR_FIRST_CHILDREN = 150
+
+K_MIN_CYCLES_FOR_FIRST_SPLIT = 100  # the rationale for this parameter is to give time to complete (b1, s1)
+K_DISTANCE_FOR_FIRST_CHILDREN = 150  # 150
 K_DISTANCE_FOR_SECOND_CHILDREN = 300
-K_DISTANCE_INTER_FIRST_CHILDREN = 50.0
+K_DISTANCE_INTER_FIRST_CHILDREN = 50.0  # 50
 K_DISTANCE_INTER_SECOND_CHILDREN = 50.0
-K_DISTANCE_FIRST_COMPENSATION = 200  # 300.0
+K_DISTANCE_FIRST_COMPENSATION = 200  # 200.0
 K_DISTANCE_SECOND_COMPENSATION = 350.0
-K_GAP_FIRST_COMPENSATION = 50  # 75.0
+K_GAP_FIRST_COMPENSATION = 50  # 50.0
 K_GAP_SECOND_COMPENSATION = 120.0
 
 B_TOTAL_BUFFER = 2000.0  # remaining guaranteed EUR balance
@@ -53,8 +55,8 @@ K_INITIAL_PT_TO_CREATE = 1
 PT_CREATED_COUNT_MAX = 100  # max number of pt created per session
 PT_CMP_CYCLE_COUNT = 30  # approximately secs (cmp update elapsed time)
 
-PT_NET_AMOUNT_BALANCE = 0.000020
-PT_S1_AMOUNT = 0.022
+PT_NET_AMOUNT_BALANCE = 0.00002  # 0.000020
+PT_S1_AMOUNT = 0.023  # 0.022
 PT_BUY_FEE = 0.08 / 100
 PT_SELL_FEE = 0.08 / 100
 PT_GROSS_EUR_BALANCE = 0.0
@@ -82,6 +84,8 @@ class Session:
 
         self.cmps = []
         self.cycles_serie = []
+        self.orders_book_depth = []
+        self.orders_book_span = []
 
         # set account balance variables
         self.initial_ab = self.get_account_balance(tag='initial')
@@ -191,6 +195,16 @@ class Session:
         self.cmps.append(cmp)
         self.cycles_serie.append(self.cmp_count)
 
+        # orders book depth & span
+        depth = abs(self.orders_book.get_depth())
+        if depth > 1000:
+            depth = 0
+        span = abs(self.orders_book.get_span())
+        if span > 1000:
+            span = 0
+        self.orders_book_depth.append(depth)
+        self.orders_book_span.append(span)
+
         self.last_cmp = cmp
         self.cycles_from_last_trade += 1
 
@@ -204,19 +218,19 @@ class Session:
         self.check_monitor_list_for_placing(cmp=cmp)
 
         # 5. check inactivity
-        if self.cycles_from_last_trade > 200:  # TODO: magic number (5')
+        if self.cycles_from_last_trade > 150:  # TODO: magic number (5')
             # get depth
-            depth = OrdersBook.get_depth()
-            if depth > 200.0:
-                # get relative cmp position inside depth
-                max_sell_price, min_sell_price, max_buy_price, min_buy_price = OrdersBook.get_price_limits()
-                if abs(cmp - min_sell_price) > 30.0 and abs(cmp - max_buy_price) > 30.0:
-                    # create and log new pt
-                    log.info('==============================')
-                    log.info(' created new pt for INACTIVITY')
-                    log.info('==============================')
-                    self.create_new_pt(cmp=cmp)  # direct to create_new_pt(), not to assess_new_pt()
-                    self.cycles_from_last_trade = 0  # equivalent to trading but without a trade
+            # depth = OrdersBook.get_depth()
+            # if depth > 50.0:
+            # get relative cmp position inside depth
+            # max_sell_price, min_sell_price, max_buy_price, min_buy_price = OrdersBook.get_price_limits()
+            # if abs(cmp - min_sell_price) > 30.0 and abs(cmp - max_buy_price) > 30.0:
+            # create and log new pt
+            log.info('==============================')
+            log.info(' created new pt for INACTIVITY')
+            log.info('==============================')
+            self.create_new_pt(cmp=cmp)  # direct to create_new_pt(), not to assess_new_pt()
+            self.cycles_from_last_trade = 0  # equivalent to trading but without a trade
 
     def check_placed_list_for_move_back(self, cmp: float):
         for order in self.orders_book.placed:
@@ -228,7 +242,8 @@ class Session:
     def check_monitor_list_for_compensation(self, cmp: float):
         for order in self.orders_book.monitor:
             # first split
-            if order.compensation_count == 0 \
+            if order.cycles_count > K_MIN_CYCLES_FOR_FIRST_SPLIT \
+                    and order.compensation_count == 0 \
                     and order.split_count == 0 \
                     and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_FIRST_CHILDREN:  # 150
                 # split into 3 children
@@ -240,40 +255,43 @@ class Session:
                     and order.split_count == 1 \
                     and order.get_distance(cmp=cmp) > K_DISTANCE_FIRST_COMPENSATION:  # 200
                 # compensate
-                self.orders_book.compensate_order(
-                    order=order,
-                    ref_mp=cmp,
-                    ref_gap=K_GAP_FIRST_COMPENSATION,  # 75
-                    buy_fee=PT_BUY_FEE,
-                    sell_fee=PT_SELL_FEE
-                )
-                self.partial_traded_orders_count -= 1
+                if self.orders_book.compensate_order(  # return true if compensation Ok
+                        order=order,
+                        ref_mp=cmp,
+                        ref_gap=K_GAP_FIRST_COMPENSATION,  # 75
+                        buy_fee=PT_BUY_FEE,
+                        sell_fee=PT_SELL_FEE):
+                    # decrease only if compensation Ok
+                    self.partial_traded_orders_count -= 1
+                else:
+                    log.critical(f'compensation failed!!! {order}')
 
-            # second split
-            elif order.compensation_count == 1 \
-                    and order.split_count == 1 \
-                    and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_SECOND_CHILDREN:  # 300
-                # split into 3 children
-                child_count = 3
-                self.orders_book.split_order(order=order, d=K_DISTANCE_INTER_SECOND_CHILDREN, child_count=child_count)  # 50
-                self.partial_traded_orders_count -= (child_count - 1)
-            # second compensation
-            elif order.compensation_count == 1 \
-                    and order.split_count == 2 \
-                    and order.get_distance(cmp=cmp) > K_DISTANCE_SECOND_COMPENSATION:  # 350
-                # compensate
-                self.orders_book.compensate_order(
-                    order=order,
-                    ref_mp=cmp,
-                    ref_gap=K_GAP_SECOND_COMPENSATION,  # 125
-                    buy_fee=PT_BUY_FEE,
-                    sell_fee=PT_SELL_FEE
-                )
-                self.partial_traded_orders_count -= 1
+            # # second split
+            # elif order.compensation_count == 1 \
+            #         and order.split_count == 1 \
+            #         and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_SECOND_CHILDREN:  # 300
+            #     # split into 3 children
+            #     child_count = 3
+            #     self.orders_book.split_order(order=order, d=K_DISTANCE_INTER_SECOND_CHILDREN, child_count=child_count)  # 50
+            #     self.partial_traded_orders_count -= (child_count - 1)
+            # # second compensation
+            # elif order.compensation_count == 1 \
+            #         and order.split_count == 2 \
+            #         and order.get_distance(cmp=cmp) > K_DISTANCE_SECOND_COMPENSATION:  # 350
+            #     # compensate
+            #     self.orders_book.compensate_order(
+            #         order=order,
+            #         ref_mp=cmp,
+            #         ref_gap=K_GAP_SECOND_COMPENSATION,  # 125
+            #         buy_fee=PT_BUY_FEE,
+            #         sell_fee=PT_SELL_FEE
+            #     )
+            #     self.partial_traded_orders_count -= 1
 
     def check_monitor_list_for_placing(self, cmp: float):
         new_placement_allowed = True
         for order in self.orders_book.monitor:
+            order.cycles_count += 1
             if new_placement_allowed and order.is_ready_for_placement(
                     cmp=cmp,
                     min_dist=K_MINIMUM_DISTANCE_FOR_PLACEMENT):

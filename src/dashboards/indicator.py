@@ -98,6 +98,9 @@ class Dashboard:
                     ),
                     dcc.Graph(id='daily-line', figure={}, config={'displayModeBar': False}),
                 ]),
+                dbc.Col([
+                    dcc.Graph(id='orders-depth', figure={}),
+                ], width={'size': 4})
             ]),
             # component to update the app every n seconds
             dcc.Interval(id='update', n_intervals=0, interval=1000 * K_INTERVAL)
@@ -189,6 +192,17 @@ class Dashboard:
             df['rate'] = df.index
             # create line chart
             fig = daux.get_cmp_line_chart(df=df, cmps=cmps)
+            return fig
+
+        @self.app.callback(
+            Output('orders-depth', 'figure'), Input('update', 'n_intervals')
+        )
+        def update_depth_line_chart(timer):
+            depths = self.session.orders_book_depth
+            spans = self.session.orders_book_span
+            df = pd.DataFrame(data=dict(depth=depths, span=spans))
+            df['rate'] = df.index
+            fig = daux.get_depth_span_line_chart(df=df)
             return fig
 
 

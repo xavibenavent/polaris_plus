@@ -54,6 +54,7 @@ def get_completed_pt_chart(df: pd.DataFrame) -> Figure:
         y='btc_net_balance',
         # text='btc_net_balance',
         color='btc_net_balance',
+        color_continuous_scale=px.colors.sequential.Greens
     )
     fig.update_xaxes(categoryorder='category ascending')
     return fig
@@ -124,12 +125,12 @@ def get_cmp_line_chart(df: pd.DataFrame, cmps: List[float]) -> Figure:
         yaxis=dict(
             title=None,
             showgrid=False,
-            showticklabels=False
+            showticklabels=True
         ),
         xaxis=dict(
             title=None,
             showgrid=False,
-            showticklabels=False
+            showticklabels=True
         ),
         height=150,
         width=500
@@ -142,6 +143,34 @@ def get_cmp_line_chart(df: pd.DataFrame, cmps: List[float]) -> Figure:
         return fig.update_traces(fill='tozeroy', line={'color': 'green'})
     else:
         return fig.update_traces(fill='tozeroy', line={'color': 'red'})
+
+
+def get_depth_span_line_chart(df: pd.DataFrame) -> Figure:
+    fig = px.line(
+        df,
+        x='rate',
+        y=['span', 'depth'],
+        # dynamic y-range
+        range_y=[0, 1000],
+    )
+    fig.update_layout(
+        margin=dict(t=0, r=0, l=0, b=20),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        yaxis=dict(
+            title=None,
+            showgrid=False,
+            showticklabels=True
+        ),
+        xaxis=dict(
+            title=None,
+            showgrid=False,
+            showticklabels=True
+        ),
+        height=300,
+        # width=500
+    )
+    return fig
 
 
 def get_tank(tank_id: str, tank_max: float, label: str):

@@ -56,6 +56,7 @@ class Order:
 
         self.compensation_count = 0
         self.split_count = 0
+        self.cycles_count = 0
 
         # used to plot, to know at which cycle the order was traded
         self.traded_cycle = 0

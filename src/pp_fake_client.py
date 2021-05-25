@@ -10,8 +10,8 @@ import threading
 from src.pp_account_balance import AssetBalance, AccountBalance
 
 log = logging.getLogger('log')
-K_INITIAL_EUR = 10_000.0
-K_INITIAL_BTC = 0.2
+K_INITIAL_EUR = 12_000.0
+K_INITIAL_BTC = 0.3
 K_INITIAL_BNB = 50.0
 
 K_FEE = 0.0008
