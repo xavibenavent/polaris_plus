@@ -16,7 +16,7 @@ from src.pp_order import Order, OrderStatus
 from src.pp_dbmanager import DBManager
 from src.pp_account_balance import AccountBalance
 from src.xb_pt_calculator import get_pt_values
-from src.pp_orders_book import OrdersBook
+from src.pp_orders_book import OrdersBook, SplitDirection
 # from src.dashboards.indicator import Dashboard
 
 log = logging.getLogger('log')
@@ -247,8 +247,18 @@ class Session:
                     and order.split_count == 0 \
                     and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_FIRST_CHILDREN:  # 150
                 # split into 3 children
-                child_count = 3
-                self.orders_book.split_order(order=order, d=K_DISTANCE_INTER_FIRST_CHILDREN, child_count=child_count)  # 50
+                child_count = 4
+                # set direction
+                direction = SplitDirection.TO_BUY_SIDE
+                if order.k_side == k_binance.SIDE_BUY:
+                    direction = SplitDirection.TO_SELL_SIDE
+                # self.orders_book.split_order(order=order, d=K_DISTANCE_INTER_FIRST_CHILDREN, child_count=child_count)
+                self.orders_book.split_n_order(
+                    order=order,
+                    inter_distance=K_DISTANCE_INTER_FIRST_CHILDREN,
+                    child_count=child_count,
+                    direction=direction
+                )
                 self.partial_traded_orders_count -= (child_count - 1)
             # first compensation
             elif order.compensation_count == 0 \

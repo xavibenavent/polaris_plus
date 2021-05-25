@@ -15,12 +15,12 @@ K_INITIAL_BTC = 0.3
 K_INITIAL_BNB = 50.0
 
 K_FEE = 0.0008
-K_BNBBTC = 0.01
+K_BNBBTC = 0.25
 K_BNBEUR = 350.0
 
 K_INITIAL_CMP = 45_000.0
 
-K_UPDATE_RATE = 0.1  # secs
+K_UPDATE_RATE = 0.05  # secs
 
 
 class FakeCmpMode(Enum):

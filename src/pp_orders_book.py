@@ -5,6 +5,7 @@ import plotly.express as px
 import logging
 from typing import List
 from binance import enums as k_binance
+from enum import Enum
 
 from src.pp_order import Order, OrderStatus
 from src.xb_pt_calculator import get_compensation
@@ -12,6 +13,11 @@ from src.pp_dbmanager import DBManager
 # from src.pp_session import DATABASE_FILE, PENDING_ORDERS_TABLE
 
 log = logging.getLogger('log')
+
+
+class SplitDirection(Enum):
+    TO_BUY_SIDE = 0
+    TO_SELL_SIDE = 1
 
 
 class OrdersBook:
@@ -223,6 +229,49 @@ class OrdersBook:
         self.dbm.delete_order(order=order, table=self.table)
 
         return new_orders
+
+    def split_n_order(self, order: Order, inter_distance: float, child_count: int, direction: SplitDirection):
+        # set signed depending on split direction
+        sign = 1
+        if direction == SplitDirection.TO_BUY_SIDE:
+            sign = -1
+        # calculate new amount
+        new_amount = order.amount / child_count
+
+        # create positions list
+        positions = []
+        if (child_count % 2) != 0:
+            positions.append(0)  # child_count is odd
+        # add positive
+        positions += [x for x in range(1, 1 + int(child_count / 2))]  # if n=4: [1, 2]
+        # add negative
+        positions += [-x for x in range(1, 1 + int(child_count / 2))]  # if n=4: [1, 2, -1, -2]
+
+        # loop positions
+        for n in positions:
+            new_price = order.price + sign * inter_distance * n
+            new_order = Order(
+                session_id=order.session_id,
+                order_id=f'CHILD({n:+})',
+                pt_id=order.pt_id,
+                k_side=order.k_side,
+                price=new_price,
+                amount=new_amount,
+                status=OrderStatus.MONITOR,
+                uid=Order.get_new_uid(),
+                name=order.name + f'({n:+})'
+            )
+            new_order.split_count = order.split_count + 1
+            new_order.compensation_count = order.compensation_count
+            # add to monitor and pending_orders table
+            self.monitor.append(new_order)
+            self.dbm.add_order(order=new_order, table=self.table)
+
+        # delete original order from orders book
+        self.monitor.remove(order)
+
+        # delete original order from pending orders table
+        self.dbm.delete_order(order=order, table=self.table)
 
     # ********* pandas methods **********
 
