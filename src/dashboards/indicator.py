@@ -1,5 +1,5 @@
 # pp_dashboard.py
-
+import flask
 import pandas as pd
 # import plotly.express as px
 
@@ -34,7 +34,11 @@ class Dashboard:
         self.get_orders_callback = get_orders_callback
         self.get_account_balance_callback = get_account_balance_callback
 
-        self.app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+        server = flask.Flask(__name__)
+        self.app = dash.Dash(__name__,
+                             external_stylesheets=[dbc.themes.BOOTSTRAP],
+                             # server=server
+                             )
 
         # app layout
         self.app.layout = html.Div([
