@@ -1,4 +1,5 @@
 # pp_dash.py
+
 import sys
 import logging
 import os
@@ -7,17 +8,12 @@ import inspect
 import flask
 from flask import request  # to stop the server
 import pandas as pd
-# import plotly.express as px
 
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
-# import dash_daq as daq
-# import plotly.graph_objects as go
-# import dash_table
-# from dash_table.Format import Format, Scheme
 from dash_daq.LEDDisplay import LEDDisplay
 
 # *********** to run from terminal project folder ***********
@@ -26,9 +22,8 @@ parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 # ***********************************************************
 
-import src.main2
 from src.dashboards import dashboard_aux as daux
-from src.pp_session import Session
+from src.pp_session import Session, QuitMode
 from src.xb_logger import XBLogger
 
 K_INTERVAL = 1.0
@@ -38,22 +33,14 @@ K_BACKGROUND_COLOR = '#272b30'
 # to create the initial datatable
 K_INITIAL_DATA = dict(pt_id='-', name='-', k_side='BUY', price=45000, signed_amount='-', signed_total='-', status='cmp')
 
-
-# class Dashboard:
-#     def __init__(self,
-#                  session: Session,
-#                  get_orders_callback,
-#                  get_account_balance_callback):
-
 XBLogger()
 log = logging.getLogger('log')
 
 # TODO: remove, here the app arguments have been forced to simplify gunicorn test
 session = Session(client_mode='simulated', new_master_session=True)
 
-# self.session = session
-get_orders_callback = session.get_orders_callback()
-get_account_balance_callback = session.get_account_balance()
+# get_orders_callback = session.get_orders_callback()
+# get_account_balance_callback = session.get_account_balance()
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
@@ -128,9 +115,10 @@ app.layout = html.Div([
     dcc.Interval(id='update', n_intervals=0, interval=1000 * K_INTERVAL)
 ])
 
+
 # ********** app callbacks **********
-@app.callback(Output('example-output', 'children'),
-                   [Input('new-pt-button', 'n_clicks')])
+@app.callback(Output(component_id='example-output', component_property='children'),
+                   [Input(component_id='new-pt-button', component_property='n_clicks')])
 def on_button_click(n):
     if n is None:
         return 'not clicked yet!'
@@ -138,8 +126,10 @@ def on_button_click(n):
         # self.session.create_new_pt(cmp=session.cmps[-1])  # direct to create_new_pt(), not to assess_new_pt()
         # return f'pt created with the button: {self.session.pt_created_count}'
         # sys.exit('SIMULATION STOPPED')
-        shutdown()
+        shutdown_flask_server()
+        session.quit(quit_mode=QuitMode.CANCEL_ALL_PLACED)
         return 'app stopped'
+
 
 @app.callback(
     Output('completed-pt-balance-chart', 'figure'), Input('update', 'n_intervals'))
@@ -150,11 +140,13 @@ def update_chart(timer):
     fig = daux.get_completed_pt_chart(df=completed_pt_df)
     return fig
 
+
 @app.callback(
     Output("pt-group-chart", "figure"), [Input('update', 'n_intervals')])
 def update_bar_chart(timer):
     df = session.get_orders_callback()
     return daux.get_bar_chart(df=df)
+
 
 @app.callback(
     Output('trades-to-new-pt', 'value'),
@@ -175,6 +167,7 @@ def update_led(timer):
     return f'{trades_to_new_pt:02.0f}', f'{satoshi_balance:.0f}', \
            f'{eur_balance_completed_pt:,.2f}', f'{cycles_from_last}'
 
+
 @app.callback(
     Output('daq-tank-btc', 'value'), Input('update', 'n_intervals')
 )
@@ -182,12 +175,14 @@ def update_tank_btc(timer):
     account_balance = session.get_account_balance()
     return account_balance.s1.free  # , account_balance.s2.free
 
+
 @app.callback(
     Output('daq-tank-eur', 'value'), Input('update', 'n_intervals')
 )
 def update_tank_eur(timer):
     account_balance = session.get_account_balance()
     return account_balance.s2.free
+
 
 @app.callback(
     Output('table', 'data'), Output('table-traded', 'data'),
@@ -197,6 +192,7 @@ def update_table(timer):
     df = session.get_orders_callback()
     return daux.get_order_tables(df=df)
 
+
 @app.callback(
     Output('indicator-graph', 'figure'), Input('update', 'n_intervals')
 )
@@ -205,6 +201,7 @@ def update_cmp_indicator(timer):
     cmps = session.cmps
     fig = daux.get_cmp_indicator(cmps=cmps)
     return fig
+
 
 @app.callback(
     Output('daily-line', 'figure'), Input('update', 'n_intervals')
@@ -219,6 +216,7 @@ def update_cmp_line_chart(timer):
     fig = daux.get_cmp_line_chart(df=df, cmps=cmps)
     return fig
 
+
 @app.callback(
     Output('orders-depth', 'figure'), Input('update', 'n_intervals')
 )
@@ -231,7 +229,7 @@ def update_depth_line_chart(timer):
     return fig
 
 
-def shutdown():
+def shutdown_flask_server():
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
         raise RuntimeError('Not running with the Werkzeug Server')

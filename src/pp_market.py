@@ -239,6 +239,8 @@ class Market:
         if reactor.running:
             reactor.stop()
 
+        # sys.exit()
+
     """
         response RESULT (default response type):
         {

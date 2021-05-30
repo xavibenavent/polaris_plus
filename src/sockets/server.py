@@ -4,7 +4,7 @@
 import socket
 import threading
 
-from src.pp_climanager import CLIManager
+from polaris_old.pp_climanager import CLIManager
 
 HOST = '127.0.0.1'
 PORT = 65432
