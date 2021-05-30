@@ -6,6 +6,7 @@ import threading
 import inspect
 import argparse
 import logging
+import flask
 
 
 # Solution to include the project path to sys.path to avoid error
@@ -49,7 +50,9 @@ if __name__ == '__main__':
         sys.exit(f'no valid client mode passed to main: {arg.client_mode}')
 
     # create session
-    session = Session(client_mode=client_mode,new_master_session=arg.new_master_session)
+    # session = Session(client_mode=client_mode,new_master_session=arg.new_master_session)
+    # TODO: remove, here the app arguments have been forced to simplify gunicorn test
+    session = Session(client_mode='simulated',new_master_session=True)
 
     # create dashboard
     db = Dashboard(
@@ -57,6 +60,10 @@ if __name__ == '__main__':
         get_orders_callback=session.get_orders_callback,
         get_account_balance_callback=session.get_account_balance,
     )
+    # print(db.app.server)
+    # server = db.app.server
+
+    # TODO: uncomment when not using gunicorn
     db.app.run_server(debug=False, dev_tools_silence_routes_logging=True)
 
     clim = CLIManager(session=session)

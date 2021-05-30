@@ -1,5 +1,8 @@
 # pp_dashboard.py
+import sys
+
 import flask
+from flask import request  # to stop the server
 import pandas as pd
 # import plotly.express as px
 
@@ -34,7 +37,7 @@ class Dashboard:
         self.get_orders_callback = get_orders_callback
         self.get_account_balance_callback = get_account_balance_callback
 
-        server = flask.Flask(__name__)
+        # server = flask.Flask(__name__)
         self.app = dash.Dash(__name__,
                              external_stylesheets=[dbc.themes.BOOTSTRAP],
                              # server=server
@@ -64,7 +67,7 @@ class Dashboard:
                         LEDDisplay(id='cycle-count-from-last', label='cycles count from last traded order', value='0',
                                    color='SeaGreen'),
                         html.Br(),
-                        dbc.Button('Create new PT', id='new-pt-button', color='success', block=True),
+                        dbc.Button('STOP SIMULATION', id='new-pt-button', color='success', block=True),
                         html.Span(id="example-output", style={"vertical-align": "middle"})
                     ],
                     width={'size': 2, 'offset': 1}
@@ -117,8 +120,11 @@ class Dashboard:
             if n is None:
                 return 'not clicked yet!'
             else:
-                self.session.create_new_pt(cmp=session.cmps[-1])  # direct to create_new_pt(), not to assess_new_pt()
-                return f'pt created with the button: {self.session.pt_created_count}'
+                # self.session.create_new_pt(cmp=session.cmps[-1])  # direct to create_new_pt(), not to assess_new_pt()
+                # return f'pt created with the button: {self.session.pt_created_count}'
+                # sys.exit('SIMULATION STOPPED')
+                shutdown()
+                return 'app stopped'
 
         @self.app.callback(
             Output('completed-pt-balance-chart', 'figure'), Input('update', 'n_intervals'))
@@ -208,6 +214,13 @@ class Dashboard:
             df['rate'] = df.index
             fig = daux.get_depth_span_line_chart(df=df)
             return fig
+
+
+def shutdown():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
 
 
 if __name__ == '__main__':  # change path in line 31 when using this

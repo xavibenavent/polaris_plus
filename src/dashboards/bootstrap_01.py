@@ -14,6 +14,7 @@ app = dash.Dash(
     name=__name__,
     external_stylesheets=[dbc.themes.CYBORG]
 )
+server = app.server
 
 df = pd.read_csv("https://raw.githubusercontent.com/Coding-with-Adam/Dash-by-Plotly/master/Bootstrap/Berlin_crimes.csv")
 df = df.groupby('District')[['Street_robbery', 'Drugs']].median()
