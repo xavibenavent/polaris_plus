@@ -77,7 +77,7 @@ class Dashboard:
                         buy_color_monitor='LightSeaGreen', sell_color_monitor='LightCoral',
                         buy_color_placed='SeaGreen', sell_color_placed='firebrick',
                     ),
-                    width={'size': 5, 'offset': 1},
+                    width={'size': 6, 'offset': 0},
                 ),
                 dbc.Col(
                     children=daux.get_datatable(
@@ -85,7 +85,7 @@ class Dashboard:
                         table_id='table-traded',
                         buy_color_traded='SeaGreen', sell_color_traded='firebrick'
                     ),
-                    width={'size': 5, 'offset': 1}
+                    width={'size': 6, 'offset': 0}
                 ),
             ]),
             dbc.Row([

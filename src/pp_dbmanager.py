@@ -83,6 +83,14 @@ class DBManager:
         except Error as e:
             log.critical(e)
 
+    def update_order_pt_id(self, table: str, uid: str, new_pt_id: str) -> None:
+        try:
+            c = self.cursor
+            c.execute(f'update {table} set pt_id = "{new_pt_id}" where uid = "{uid}";')
+            self.conn.commit()
+        except Error as e:
+            log.critical(e)
+
     def delete_order(self, order: Order, table: str):
         try:
             # identify order by order_id

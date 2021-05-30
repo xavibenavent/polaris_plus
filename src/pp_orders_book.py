@@ -28,12 +28,19 @@ class OrdersBook:
         self.monitor = []
         self.placed = []
 
+        self.concentrated_count = 1
+
         self.dbm = dbm
         self.table = table
 
         # add each order to its appropriate list
         for order in orders:
             self.monitor.append(order)
+
+    def get_monitor_df(self) -> pd.DataFrame:
+        df = pd.DataFrame(data=self.monitor)
+        return df
+
 
     def add_order(self, order: Order) -> None:
         self.monitor.append(order)
@@ -69,15 +76,6 @@ class OrdersBook:
 
     def count(self) -> int:
         return len(self.monitor)
-
-    # def buy_count(self) -> int:
-    #     return len(self.buy)
-    #
-    # def sell_count(self) -> int:
-    #     return len(self.sell)
-
-    # def get_side_diff(self) -> int:
-    #     return self.sell_count() - self.buy_count()
 
     def compensate_order(self,
                          order: Order,
@@ -159,6 +157,119 @@ class OrdersBook:
         return False
         # return new_orders
 
+    def concentrate_list(self,
+                         orders: List[Order],
+                         ref_mp: float,
+                         ref_gap: float,
+                         n_for_split: int,
+                         interdistance_after_concentration: float,
+                         buy_fee: float,
+                         sell_fee: float) -> bool:
+
+        # get equivalent balance
+        amount, total = OrdersBook.get_balance_for_list(orders=orders)
+
+        s1_p, b1_p, s1_qty, b1_qty = get_compensation(
+            cmp=ref_mp,
+            gap=ref_gap,
+            qty_bal=amount,
+            price_bal=total,
+            buy_fee=buy_fee,
+            sell_fee=sell_fee
+        )
+
+        # validate data received
+        if s1_p < 0 or b1_p < 0 or s1_qty < 0 or b1_qty < 0:
+            log.critical(f'!!!!!!!!!! negative value(s) after compensation: b1p: {b1_p} - b1q: {b1_qty} !!!!!!!!!!'
+                         f'- s1p: {s1_p} - s1q: {s1_qty}')
+        # elif s1_qty > 1.5 or b1_qty > 1.5:
+        #     log.critical(f'!!!!!!!!!! exceeded max qty:    b1q: {b1_qty} - s1q: {s1_qty} !!!!!!!!!!')
+        else:
+            # get pt_id of all orders to concentrate
+            pt_ids = []
+            for order in orders:
+                if order.pt_id not in pt_ids:
+                    pt_ids.append(order.pt_id)
+            # change orders with this pt_id to new pt_id
+            new_pt_id = f'C-{self.concentrated_count:03}'
+            all_orders = self.monitor
+            all_orders.extend(self.placed)
+            for order in all_orders:
+                if order.pt_id in pt_ids:
+                    order.pt_id = new_pt_id
+            # change pt_id also in traded orders
+            traded_orders = self.dbm.get_orders_from_table(table='traded_orders')
+            for order in traded_orders:
+                if order.pt_id in pt_ids:
+                    log.info(f'order before updating: {order}')
+                    self.dbm.update_order_pt_id(table='traded_orders', new_pt_id=new_pt_id, uid=order.uid)
+
+            # create both orders
+            b1 = Order(
+                session_id=orders[0].session_id,  # session id of the first order (it might be from another session)
+                order_id='CONCENTRATED',
+                pt_id=new_pt_id,
+                k_side=k_binance.SIDE_BUY,
+                price=b1_p,
+                amount=b1_qty,
+                status=OrderStatus.MONITOR,
+                uid=Order.get_new_uid(),
+                name='con-b1'
+            )
+            s1 = Order(
+                session_id=orders[0].session_id,
+                order_id='CONCENTRATED',
+                pt_id=new_pt_id,
+                k_side=k_binance.SIDE_SELL,
+                price=s1_p,
+                amount=s1_qty,
+                status=OrderStatus.MONITOR,
+                uid=Order.get_new_uid(),
+                name='con-s1'
+            )
+
+            # add new orders to appropriate list
+            self.monitor.append(b1)
+            self.monitor.append(s1)
+
+            # add new orders to pending_orders table
+            self.dbm.add_order(order=b1, table=self.table)
+            self.dbm.add_order(order=s1, table=self.table)
+
+            # delete original orders from list
+            for order in orders:
+                self.monitor.remove(order)
+                # delete original order from pending_orders table
+                self.dbm.delete_order(order=order, table=self.table)
+
+            # log
+            log.info('////////// ORDER COMPENSATED //////////')
+            for order in orders:
+                log.info(f'initial order:  {order}')
+                log.info(f'compensation count: {order.compensation_count}')
+            log.info(f'compensated b1: {b1}')
+            log.info(f'compensated s1: {s1}')
+
+            # update concentrated variables and inverse counter
+            b1.concentration_count = 1
+            s1.concentration_count = 1
+            self.concentrated_count += 1
+            # if self.concentrated_count < 100:
+            #     log.critical(f'concentrated count reaching 0: {self.concentrated_count}')
+
+            # update variables
+            b1.compensation_count = orders[0].compensation_count
+            b1.split_count = orders[0].split_count
+            s1.compensation_count = orders[-1].compensation_count
+            s1.split_count = orders[-1].split_count
+
+            # split n
+            self.split_n_order(order=b1, inter_distance=interdistance_after_concentration, child_count=n_for_split)  # n = 5
+            self.split_n_order(order=s1, inter_distance=interdistance_after_concentration, child_count=n_for_split)
+
+            return True
+        return False
+
     def split_order(self, order: Order, d: float, child_count: int) -> List[Order]:
         # return a list with the child orders
         # child_count should be 2 or 3
@@ -230,11 +341,7 @@ class OrdersBook:
 
         return new_orders
 
-    def split_n_order(self, order: Order, inter_distance: float, child_count: int, direction: SplitDirection):
-        # set signed depending on split direction
-        sign = 1
-        if direction == SplitDirection.TO_BUY_SIDE:
-            sign = -1
+    def split_n_order(self, order: Order, inter_distance: float, child_count: int):  # direction: SplitDirection):
         # calculate new amount
         new_amount = order.amount / child_count
 
@@ -249,7 +356,7 @@ class OrdersBook:
 
         # loop positions
         for n in positions:
-            new_price = order.price + sign * inter_distance * n
+            new_price = order.price + inter_distance * n
             new_order = Order(
                 session_id=order.session_id,
                 order_id=f'CHILD({n:+})',
@@ -263,6 +370,7 @@ class OrdersBook:
             )
             new_order.split_count = order.split_count + 1
             new_order.compensation_count = order.compensation_count
+            new_order.concentration_count = order.concentration_count
             # add to monitor and pending_orders table
             self.monitor.append(new_order)
             self.dbm.add_order(order=new_order, table=self.table)
@@ -277,24 +385,6 @@ class OrdersBook:
 
     def show_orders_graph(self):
         pass
-        # cnx = DBManager.create_connection(file_name='src/database/orders.db')
-        # df_po = pd.read_sql_query(f'SELECT * FROM pending_orders', cnx)
-        # df_to = pd.read_sql_query(f'SELECT * FROM traded_orders', cnx)
-        # df_po['status'] = 'monitor'
-        # df_to['status'] = 'traded'
-        # dff = df_po.append(other=df_to)
-        #
-        # fig = px.scatter(dff,
-        #                  x='price',
-        #                  y='amount',
-        #                  color='side',
-        #                  color_discrete_map={'BUY': 'green', 'SELL': 'red'},
-        #                  symbol='status',
-        #                  symbol_map={'monitor': 'circle', 'traded': 'cross'}
-        #                  )
-        # fig.update_traces(marker_size=25)
-        #
-        # fig.show()
 
     def get_pending_orders_df(self) -> pd.DataFrame:
         # create dataframe from orders list
@@ -346,3 +436,13 @@ class OrdersBook:
         cnx = DBManager.create_connection(file_name='src/database/orders.db')
         df = pd.read_sql_query(f'SELECT * FROM pending_orders', cnx)
         return df
+
+    @staticmethod
+    def get_balance_for_list(orders: List[Order]) -> (float, float):
+        amount = 0.0
+        total = 0.0
+        for order in orders:
+            amount += order.get_signed_amount()
+            total += order.get_signed_total()
+        return amount, total
+

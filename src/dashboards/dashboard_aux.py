@@ -339,6 +339,10 @@ def get_pending_datatable(table_id: str,
             {'id': 'split_count', 'name': 'split', 'type': 'numeric',
              'format': Format(
                  precision=0,
+             )},
+            {'id': 'concentration_count', 'name': 'concentration', 'type': 'numeric',
+             'format': Format(
+                 precision=0,
              )}
         ],
         data=data,

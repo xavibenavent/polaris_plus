@@ -57,6 +57,7 @@ class Order:
         self.compensation_count = 0
         self.split_count = 0
         self.cycles_count = 0
+        self.concentration_count = 0
 
         # used to plot, to know at which cycle the order was traded
         self.traded_cycle = 0
@@ -83,10 +84,11 @@ class Order:
         return self.get_distance(cmp=cmp) > max_dist
 
     def get_distance(self, cmp: float) -> float:
-        if self.k_side == k_binance.SIDE_BUY:
-            return cmp - self.price
-        else:
-            return self.price - cmp
+        return abs(cmp - self.price)
+        # if self.k_side == k_binance.SIDE_BUY:
+        #     return cmp - self.price
+        # else:
+        #     return self.price - cmp
 
     def get_price_str(self, precision: int = 2) -> str:
         price = '{:0.0{}f}'.format(self.price, precision)  # 2 for EUR
