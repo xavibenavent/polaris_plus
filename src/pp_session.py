@@ -354,7 +354,6 @@ class Session:
                 else:
                     self.sell_count += 1
                 # set commission and price
-                # order.bnb_commission = bnb_commission
                 order.set_bnb_commission(
                     commission=bnb_commission,
                     bnbbtc_rate=self.market.get_cmp(symbol='BNBBTC'))
@@ -379,17 +378,11 @@ class Session:
 
                 # check whether a new pt is allowed or not
                 if self.pt_created_count < PT_CREATED_COUNT_MAX and self.partial_traded_orders_count >= 0:
-                    # self.pt_created_count += 1
                     self.create_new_pt(cmp=self.last_cmp)
-                    # self.partial_traded_orders_count -= 2
                 else:
                     log.info('no new pt created after the last traded order')
-                # log.info(f'pt created count: {self.pt_created_count}')
-
-                # self.assess_new_pt()
-
-                # TODO: asses the break
-                # break
+                # since the traded orders has been identified, do not check more orders
+                break
 
     def get_traded_balance_callback(self) -> float:
         amount, total, commission, btc = self.get_balance_for_list(self.traded)

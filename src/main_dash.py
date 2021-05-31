@@ -1,4 +1,4 @@
-# pp_dash.py
+# main_dash.py
 
 import sys
 import logging
@@ -15,6 +15,7 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
 from dash_daq.LEDDisplay import LEDDisplay
+import plotly.express as px
 
 # *********** to run from terminal project folder ***********
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
@@ -25,13 +26,12 @@ sys.path.insert(0, parentdir)
 from src.dashboards import dashboard_aux as daux
 from src.pp_session import Session, QuitMode
 from src.xb_logger import XBLogger
+import src.dashboards.layout as main_layout
 
+# dashboard refresh/update rate
 K_INTERVAL = 1.0
 
-K_BACKGROUND_COLOR = '#272b30'
-
-# to create the initial datatable
-K_INITIAL_DATA = dict(pt_id='-', name='-', k_side='BUY', price=45000, signed_amount='-', signed_total='-', status='cmp')
+# K_BACKGROUND_COLOR = '#272b30'
 
 XBLogger()
 log = logging.getLogger('log')
@@ -39,81 +39,11 @@ log = logging.getLogger('log')
 # TODO: remove, here the app arguments have been forced to simplify gunicorn test
 session = Session(client_mode='simulated', new_master_session=True)
 
-# get_orders_callback = session.get_orders_callback()
-# get_account_balance_callback = session.get_account_balance()
-
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
 
 # app layout
-app.layout = html.Div([
-    dbc.Row([
-        dbc.Col(html.H1("Session dashboard", style={'text-align': 'center'}))
-    ]),
-    dbc.Row([
-        dbc.Col(
-            children=daux.get_tank(tank_id='daq-tank-btc', tank_max=0.4, label='BTC (free)'),
-            width={'size': 1, 'offset': 1}
-        ),
-        dbc.Col(
-            children=daux.get_tank(tank_id='daq-tank-eur', tank_max=20_000.0, label='EUR (free)'),
-            width={'size': 1, 'offset': 0}
-        ),
-        dbc.Col(
-            children=[
-                LEDDisplay(id='trades-to-new-pt', label='trades to new pt', value='0', color='SeaGreen'),
-                LEDDisplay(id='traded-balance', label='traded orders balance', value='0',
-                           color='SeaGreen'),
-                LEDDisplay(id='traded-price-balance', label='traded price balance', value='0',
-                           color='DarkSeaGreen'),
-                LEDDisplay(id='cycle-count-from-last', label='cycles count from last traded order', value='0',
-                           color='SeaGreen'),
-                html.Br(),
-                dbc.Button('STOP SIMULATION', id='new-pt-button', color='success', block=True),
-                html.Span(id="example-output", style={"vertical-align": "middle"})
-            ],
-            width={'size': 2, 'offset': 1}
-        ),
-        dbc.Col([
-            dcc.Graph(id='completed-pt-balance-chart'),
-        ], width={'size': 6})
-    ]),
-    dbc.Row([
-        dbc.Col(
-            children=daux.get_pending_datatable(
-                data=session.get_orders_callback().to_dict('records'),
-                table_id='table',
-                buy_color_monitor='LightSeaGreen', sell_color_monitor='LightCoral',
-                buy_color_placed='SeaGreen', sell_color_placed='firebrick',
-            ),
-            width={'size': 6, 'offset': 0},
-        ),
-        dbc.Col(
-            children=daux.get_datatable(
-                data=session.get_orders_callback().to_dict('records'),
-                table_id='table-traded',
-                buy_color_traded='SeaGreen', sell_color_traded='firebrick'
-            ),
-            width={'size': 6, 'offset': 0}
-        ),
-    ]),
-    dbc.Row([
-        dbc.Col([
-            dcc.Graph(id='pt-group-chart'),
-            dcc.Graph(
-                id='indicator-graph',
-                figure={},
-                config={'displayModeBar': False}
-            ),
-            dcc.Graph(id='daily-line', figure={}, config={'displayModeBar': False}),
-        ]),
-        dbc.Col([
-            dcc.Graph(id='orders-depth', figure={}),
-        ], width={'size': 4})
-    ]),
-    # component to update the app every n seconds
-    dcc.Interval(id='update', n_intervals=0, interval=1000 * K_INTERVAL)
-])
+app.layout = main_layout.get_layout(interval=K_INTERVAL)
 
 
 # ********** app callbacks **********
@@ -123,9 +53,6 @@ def on_button_click(n):
     if n is None:
         return 'not clicked yet!'
     else:
-        # self.session.create_new_pt(cmp=session.cmps[-1])  # direct to create_new_pt(), not to assess_new_pt()
-        # return f'pt created with the button: {self.session.pt_created_count}'
-        # sys.exit('SIMULATION STOPPED')
         shutdown_flask_server()
         session.quit(quit_mode=QuitMode.CANCEL_ALL_PLACED)
         return 'app stopped'
@@ -138,6 +65,21 @@ def update_chart(timer):
     # get dataframe with orders from completed pt
     completed_pt_df = daux.get_completed_pt_df(df=df)
     fig = daux.get_completed_pt_chart(df=completed_pt_df)
+    return fig
+
+
+@app.callback(
+    Output('kpi-bar-chart', 'figure'), Input('update', 'n_intervals'))
+def update_chart(timer):
+    df = session.orders_book.get_pending_orders_kpi(cmp=session.last_cmp, buy_fee=0.0008, sell_fee=0.0008)
+    fig = px.bar(
+        data_frame=df,
+        x='price',
+        y='amount',
+        # text='amount',
+        color='side',
+        range_y=[0, 1],
+    )
     return fig
 
 

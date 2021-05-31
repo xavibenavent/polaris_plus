@@ -83,9 +83,7 @@ class OrdersBook:
                          ref_gap: float,
                          buy_fee: float,
                          sell_fee: float) -> bool:
-        # return a list with the two orders resulting from the compensation
-        # if limits are exceeded, then the list is empty
-        # new_orders = []
+
         s1_p, b1_p, s1_qty, b1_qty = get_compensation(
             cmp=ref_mp,
             gap=ref_gap,
@@ -155,7 +153,6 @@ class OrdersBook:
             s1.split_count = order.split_count
             return True
         return False
-        # return new_orders
 
     def concentrate_list(self,
                          orders: List[Order],
@@ -182,8 +179,6 @@ class OrdersBook:
         if s1_p < 0 or b1_p < 0 or s1_qty < 0 or b1_qty < 0:
             log.critical(f'!!!!!!!!!! negative value(s) after compensation: b1p: {b1_p} - b1q: {b1_qty} !!!!!!!!!!'
                          f'- s1p: {s1_p} - s1q: {s1_qty}')
-        # elif s1_qty > 1.5 or b1_qty > 1.5:
-        #     log.critical(f'!!!!!!!!!! exceeded max qty:    b1q: {b1_qty} - s1q: {s1_qty} !!!!!!!!!!')
         else:
             # get pt_id of all orders to concentrate
             pt_ids = []
@@ -395,6 +390,45 @@ class OrdersBook:
         # append both dataframes
         df_pending = df_monitor.append(other=df_placed)
         return df_pending
+
+    def get_pending_orders_kpi(self, cmp: float, buy_fee: float, sell_fee: float) -> pd.DataFrame:
+        # create all pending orders list
+        pending_orders = self.monitor + self.placed  # check it
+        print(f'pending orders: {pending_orders}')
+        # filter orders by distance
+        for order in pending_orders:
+            if order.get_distance(cmp=cmp) < 250:
+                pending_orders.remove(order)
+        # get equivalent balance
+        amount, total = OrdersBook.get_balance_for_list(orders=pending_orders)
+
+        # create empty dataframe (only column names)
+        # df = pd.DataFrame(columns=['kpi', 'price', 'amount', 'side'])
+        data_list = []
+
+        # get equivalent pair for each gap
+        gap_list = [100, 200, 300, 400, 500]
+        for gap in gap_list:
+            s1_p, b1_p, s1_qty, b1_qty = get_compensation(
+                cmp=cmp,
+                gap=gap,
+                qty_bal=amount,
+                price_bal=total,
+                buy_fee=buy_fee,
+                sell_fee=sell_fee
+            )
+            # create new data
+            sell_kpi = dict(kpi=gap, price=s1_p, amount=s1_qty, side='SELL')
+            buy_kpi = dict(kpi=gap, price=b1_p, amount=b1_qty, side='BUY')
+            # append to list
+            data_list.append(buy_kpi)
+            data_list.append(sell_kpi)
+        # create dataframe
+        df = pd.DataFrame(data=data_list, columns=['kpi', 'price', 'amount', 'side'])
+        # df1 = df.append(other=data_list, ignore_index=True)
+        return df
+
+
 
     @staticmethod
     def get_depth() -> float:

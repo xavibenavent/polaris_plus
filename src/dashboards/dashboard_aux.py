@@ -60,7 +60,7 @@ def get_completed_pt_chart(df: pd.DataFrame) -> Figure:
     return fig
 
 
-def get_order_tables(df: pd.DataFrame) -> (Figure, Figure):
+def get_order_tables(df: pd.DataFrame) -> (dict, dict):  # TODO: check it, should it be dict?
     # sort by price
     dff = df.sort_values(by=['price'], ascending=False)
     # filter by status for eac table (monitor-placed & traded)
@@ -188,7 +188,7 @@ def get_tank(tank_id: str, tank_max: float, label: str):
 
 
 def get_datatable(table_id: str,
-                  data: dict,
+                  data: List[dict],  # due to the 'record' parameter of DataFrame.to_dict()
                   buy_color_monitor='MintCream', sell_color_monitor='MintCream',
                   buy_color_placed='MintCream', sell_color_placed='MintCream',
                   buy_color_traded='MintCream', sell_color_traded='MintCream'
@@ -306,7 +306,7 @@ def get_datatable(table_id: str,
 
 
 def get_pending_datatable(table_id: str,
-                  data: dict,
+                  data: List[dict],
                   buy_color_monitor='MintCream', sell_color_monitor='MintCream',
                   buy_color_placed='MintCream', sell_color_placed='MintCream'
                   ):
