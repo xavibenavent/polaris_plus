@@ -240,20 +240,3 @@ class Market:
             reactor.stop()
 
         # sys.exit()
-
-    """
-        response RESULT (default response type):
-        {
-            "symbol": "BTCUSDT",
-            "orderId": 28,
-            "clientOrderId": "6gCrw2kRUAF9CvJDGP16IP",
-            "transactTime": 1507725176595,
-            "price": "0.00000000",
-            "origQty": "10.00000000",
-            "executedQty": "10.00000000",
-            "status": "FILLED",
-            "timeInForce": "GTC",
-            "type": "MARKET",
-            "side": "SELL"
-        }
-    """

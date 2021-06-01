@@ -40,8 +40,10 @@ def get_bar_chart(df: pd.DataFrame) -> Figure:
 
 
 def get_completed_pt_chart(df: pd.DataFrame) -> Figure:
-    df['btc_net_balance'] = (df.signed_amount - df.btc_commission) * 1e8
-    df1 = df.groupby('pt_id', as_index=False).agg({'btc_net_balance': 'sum'})
+    dfc = df.copy()
+    # df['btc_net_balance'] = (df.signed_amount - df.btc_commission) * 1e8
+    dfc['btc_net_balance'] = (dfc.signed_amount - dfc.btc_commission) * 1e8
+    df1 = dfc.groupby('pt_id', as_index=False).agg({'btc_net_balance': 'sum'})
     fig = px.bar(
         data_frame=df1,
         x='pt_id',

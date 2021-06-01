@@ -9,7 +9,7 @@ from enum import Enum
 from src.pp_order import Order, OrderStatus
 from src.xb_pt_calculator import get_compensation
 from polaris_old.pp_dbmanager import DBManager
-from src.pp_traded_book import TradedBook
+from src.pp_traded_book import TradedOrdersBook
 # from src.pp_session import DATABASE_FILE, PENDING_ORDERS_TABLE
 
 log = logging.getLogger('log')
@@ -20,18 +20,13 @@ class SplitDirection(Enum):
     TO_SELL_SIDE = 1
 
 
-class OrdersBook:
-    def __init__(self, orders: List[Order]):  # , dbm: DBManager, table: str):
-        # e = True
-        # if e:
-        #     raise AssertionError
+class PendingOrdersBook:
+    def __init__(self, orders: List[Order]):
+
         self.monitor = []
         self.placed = []
 
         self.concentrated_count = 1
-
-        # self.dbm = dbm
-        # self.table = table
 
         # add each order to its appropriate list
         for order in orders:
@@ -40,7 +35,6 @@ class OrdersBook:
     def get_monitor_df(self) -> pd.DataFrame:
         df = pd.DataFrame(data=self.monitor)
         return df
-
 
     def add_order(self, order: Order) -> None:
         self.monitor.append(order)
@@ -65,7 +59,7 @@ class OrdersBook:
         else:
             log.critical(f'trying to place back to monitor an order not found in the placed list: {order}')
 
-    def get_all_orders(self) -> List[Order]:
+    def get_monitor_orders(self) -> List[Order]:
         return self.monitor
 
     def get_pending_orders(self) -> List[Order]:
@@ -173,7 +167,7 @@ class OrdersBook:
 
     def concentrate_list(self,
                          orders: List[Order],
-                         traded_book: TradedBook,
+                         traded_book: TradedOrdersBook,
                          ref_mp: float,
                          ref_gap: float,
                          n_for_split: int,
@@ -182,7 +176,7 @@ class OrdersBook:
                          sell_fee: float) -> bool:
 
         # get equivalent balance
-        amount, total = OrdersBook.get_balance_for_list(orders=orders)
+        amount, total = PendingOrdersBook.get_balance_for_list(orders=orders)
 
         s1_p, b1_p, s1_qty, b1_qty = get_compensation(
             cmp=ref_mp,
@@ -403,7 +397,7 @@ class OrdersBook:
             if order.get_distance(cmp=cmp) < 250:
                 pending_orders.remove(order)
         # get equivalent balance
-        amount, total = OrdersBook.get_balance_for_list(orders=pending_orders)
+        amount, total = PendingOrdersBook.get_balance_for_list(orders=pending_orders)
 
         # create empty dataframe (only column names)
         # df = pd.DataFrame(columns=['kpi', 'price', 'amount', 'side'])
@@ -436,7 +430,7 @@ class OrdersBook:
     @staticmethod
     def get_depth() -> float:
         # difference between first sell and buy
-        na, min_sell_price, max_buy_price, nb = OrdersBook.get_price_limits()
+        na, min_sell_price, max_buy_price, nb = PendingOrdersBook.get_price_limits()
         # if there are no buy sells then both buy values are 0
         # the same applies for sell side
         return abs(min_sell_price - max_buy_price)
@@ -445,7 +439,7 @@ class OrdersBook:
     def get_span() -> float:
         # difference between last sell and buy
         # df = OrdersBook.get_df_from_pending_orders_table()
-        max_sell_price, na, nb, min_buy_price = OrdersBook.get_price_limits()
+        max_sell_price, na, nb, min_buy_price = PendingOrdersBook.get_price_limits()
         return max_sell_price - min_buy_price
 
     @staticmethod
@@ -456,7 +450,7 @@ class OrdersBook:
         max_buy_price = 0
         min_buy_price = 0
         # get dataframe
-        df = OrdersBook._get_df_from_pending_orders_table()
+        df = PendingOrdersBook._get_df_from_pending_orders_table()
         # get max and min only if the element in a side is greater than 0
         if df[df['side'] == 'SELL'].shape[0] > 0:
             max_sell_price = df.loc[df['side'] == 'SELL', 'price'].max()

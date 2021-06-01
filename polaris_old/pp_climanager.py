@@ -18,7 +18,7 @@ class CLIManager:
     def process(self, user_input: str):
         # entry point for remote controlled actions
         if user_input == '1':
-            d = dict(monitor=self.session.orders_book.monitor, placed=self.session.orders_book.placed, traded=self.session.traded)
+            d = dict(monitor=self.session.pob.monitor, placed=self.session.pob.placed, traded=self.session.traded)
             self.show_lists(d=d)
         elif user_input == '2':
             self.show_balance()
@@ -28,7 +28,7 @@ class CLIManager:
         elif user_input == '4-t':
             self.show_partial_balance(self.session.traded)
         elif user_input == '4-p':
-            pending_orders = self.session.orders_book.monitor + self.session.orders_book.placed
+            pending_orders = self.session.pob.monitor + self.session.pob.placed
             self.show_partial_balance(pending_orders)
         elif user_input == 'q':
             self.quit = True
@@ -37,7 +37,7 @@ class CLIManager:
             self.quit = True
             self.session.market.stop()
         elif user_input == '8':
-            self.session.orders_book.show_orders_graph()
+            self.session.pob.show_orders_graph()
             # self.session.dashboard.
         elif user_input == '9':
             self.create_market_order()

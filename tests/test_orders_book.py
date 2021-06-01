@@ -3,7 +3,7 @@
 import unittest
 
 from src.pp_order import Order, OrderStatus
-from src.pp_orders_book import OrdersBook
+from src.pp_orders_book import PendingOrdersBook
 from binance import enums as k_binance
 
 import pandas as pd
@@ -40,7 +40,7 @@ class TestOrdersBook(unittest.TestCase):
         table = 'test_table'
 
         # create orders book
-        self.orders_book = OrdersBook(orders=orders, dbm=dbm, table=table)
+        self.orders_book = PendingOrdersBook(orders=orders, dbm=dbm, table=table)
 
     def test_init(self):
         self.assertEqual(47300.0, self.orders_book.buy[0].price)
@@ -76,7 +76,7 @@ class TestOrdersBook(unittest.TestCase):
             print(order)
 
     def test_get_all_orders(self):
-        all_orders = self.orders_book.get_all_orders()
+        all_orders = self.orders_book.get_monitor_orders()
         self.assertEqual(2, len(all_orders))
         # check creation of dataframe from objects list
         df = pd.DataFrame([order.__dict__ for order in all_orders])

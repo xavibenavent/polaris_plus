@@ -5,7 +5,7 @@ from typing import List
 from src.pp_order import Order
 
 
-class TradedBook:
+class TradedOrdersBook:
     def __init__(self):
         self.completed: List[Order] = []
         self.pending: List[Order] = []

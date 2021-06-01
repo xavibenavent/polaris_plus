@@ -68,7 +68,7 @@ def update_chart(timer):
 @app.callback(
     Output('kpi-bar-chart', 'figure'), Input('update', 'n_intervals'))
 def update_chart(timer):
-    df = session.orders_book.get_pending_orders_kpi(cmp=session.last_cmp, buy_fee=0.0008, sell_fee=0.0008)
+    df = session.pob.get_pending_orders_kpi(cmp=session.last_cmp, buy_fee=0.0008, sell_fee=0.0008)
     fig = px.bar(
         data_frame=df,
         x='price',
@@ -115,7 +115,7 @@ def update_led(timer):
     Input('update', 'n_intervals')
 )
 def update_tank_btc(timer):
-    account_balance = session.get_account_balance()
+    account_balance = session.bm.get_account_balance()
     return account_balance.s1.free, account_balance.s2.free, account_balance.bnb.free
 
 

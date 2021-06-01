@@ -1,4 +1,4 @@
-# pp_strategy.py
+# pp_strategy_manager.py
 
 from typing import List
 from binance import enums as k_binance
@@ -23,7 +23,7 @@ PT_BUY_FEE = 0.08 / 100
 PT_SELL_FEE = 0.08 / 100
 
 
-class Strategy:
+class StrategyManager:
     def __init__(self):
         pass
 
