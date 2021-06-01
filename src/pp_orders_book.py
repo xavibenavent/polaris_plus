@@ -398,7 +398,6 @@ class OrdersBook:
     def get_pending_orders_kpi(self, cmp: float, buy_fee: float, sell_fee: float) -> pd.DataFrame:
         # create all pending orders list
         pending_orders = self.monitor + self.placed  # check it
-        print(f'pending orders: {pending_orders}')
         # filter orders by distance
         for order in pending_orders:
             if order.get_distance(cmp=cmp) < 250:

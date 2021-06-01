@@ -18,6 +18,7 @@ class OrderStatus(Enum):
     TRADED = 3
     CANCELED = 4
     ISOLATED = 5
+    CMP = 6
 
 
 class Order:
@@ -42,6 +43,7 @@ class Order:
         self.price = price
         self.amount = amount
         self.status = status
+        self.status_name = status.name.lower()
         self.bnb_commission = bnb_commission
         self.btc_commission = 0.0
         self.binance_id = binance_id
@@ -120,10 +122,14 @@ class Order:
     def set_status(self, status: OrderStatus):
         old_status = self.status
         self.status = status
+        self.status_name = self.status.name.lower()
         log.info(f'** ORDER STATUS CHANGED FROM {old_status.name} TO {status.name} - {self}')
 
     def set_binance_id(self, new_id: int):
         self.binance_id = new_id
+
+    def get_status_name(self) -> str:
+        return self.status.name
 
     def __repr__(self):
         return (f'split count: {self.split_count} '

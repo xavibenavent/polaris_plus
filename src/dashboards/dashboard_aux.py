@@ -12,14 +12,11 @@ from dash_table.Format import Format, Scheme
 # ********** dashboard app.callback functions **********
 
 def get_bar_chart(df: pd.DataFrame) -> Figure:
-    # filter selected orders only
-    df1 = df[df.status.ne('cmp')]
     # change monitor and placed to pending
-    # df1.loc[(df.status.isin(['monitor', 'placed'])), 'status'] = 'pending'
-    df1.loc[(df.status == 'monitor'), 'status'] = 'pending'
-    df1.loc[(df.status == 'placed'), 'status'] = 'pending'
+    df.loc[(df.status_name == 'monitor'), 'status_name'] = 'pending'
+    df.loc[(df.status_name == 'placed'), 'status_name'] = 'pending'
     # keep needed rows only
-    df2 = df1[['pt_id', 'signed_total', 'status', 'name']]
+    df2 = df[['pt_id', 'signed_total', 'status_name', 'name']]
     # group bt pt_id
     # df2 = df1.groupby('pt_id', as_index=False).agg({'signed_total': 'sum'})
     # create chart
@@ -27,17 +24,14 @@ def get_bar_chart(df: pd.DataFrame) -> Figure:
         data_frame=df2,
         x='pt_id',
         y='signed_total',
-        # template='plotly_dark',
-        color='status',
+        color='status_name',
         barmode='group',
         text='name',
         height=800,
         color_discrete_map={'pending': 'LightCoral', 'traded': 'LightSeaGreen'},
         range_y=[-10000, 10000],
-        # range_x=[-1, 7],
     )
     fig.update_traces(
-        # width=0.4,
         textfont_color='white',
         insidetextanchor='middle'
     )
@@ -52,21 +46,11 @@ def get_completed_pt_chart(df: pd.DataFrame) -> Figure:
         data_frame=df1,
         x='pt_id',
         y='btc_net_balance',
-        # text='btc_net_balance',
         color='btc_net_balance',
         color_continuous_scale=px.colors.sequential.Greens
     )
     fig.update_xaxes(categoryorder='category ascending')
     return fig
-
-
-def get_order_tables(df: pd.DataFrame) -> (dict, dict):  # TODO: check it, should it be dict?
-    # sort by price
-    dff = df.sort_values(by=['price'], ascending=False)
-    # filter by status for eac table (monitor-placed & traded)
-    df_pending = dff[dff.status.isin(['monitor', 'placed', 'cmp'])]
-    df_traded = dff[dff.status.eq('traded')]
-    return df_pending.to_dict('records'), df_traded.to_dict('records')
 
 
 def get_completed_pt_balance(df: pd.DataFrame) -> (float, float):
@@ -254,49 +238,49 @@ def get_datatable(table_id: str,
         style_data_conditional=[
             {
                 'if': {
-                    'filter_query': '{k_side} = SELL && {status} = placed',
+                    'filter_query': '{k_side} = SELL && {status_name} = placed',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': sell_color_placed
             },
             {
                 'if': {
-                    'filter_query': '{k_side} = BUY && {status} = placed',
+                    'filter_query': '{k_side} = BUY && {status_name} = placed',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': buy_color_placed
             },
             {
                 'if': {
-                    'filter_query': '{k_side} = SELL && {status} = monitor',
+                    'filter_query': '{k_side} = SELL && {status_name} = monitor',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': sell_color_monitor
             },
             {
                 'if': {
-                    'filter_query': '{k_side} = BUY && {status} = monitor',
+                    'filter_query': '{k_side} = BUY && {status_name} = monitor',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': buy_color_monitor
             },
             {
                 'if': {
-                    'filter_query': '{k_side} = SELL && {status} = traded',
+                    'filter_query': '{k_side} = SELL && {status_name} = traded',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': sell_color_traded
             },
             {
                 'if': {
-                    'filter_query': '{k_side} = BUY && {status} = traded',
+                    'filter_query': '{k_side} = BUY && {status_name} = traded',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': buy_color_traded
             },
             {
                 'if': {
-                    'filter_query': '{status} = cmp',
+                    'filter_query': '{status_name} = cmp',
                     'column_id': ['price', 'name', 'pt_id', 'signed_total'],
                 },
                 'color': 'orange'
@@ -307,11 +291,12 @@ def get_datatable(table_id: str,
     return datatable
 
 
-def get_pending_datatable(table_id: str,
-                  data: List[dict],
-                  buy_color_monitor='MintCream', sell_color_monitor='MintCream',
-                  buy_color_placed='MintCream', sell_color_placed='MintCream'
-                  ):
+def get_pending_datatable(
+        table_id: str,
+        data: List[dict],
+        buy_color_monitor='MintCream', sell_color_monitor='MintCream',
+        buy_color_placed='MintCream', sell_color_placed='MintCream'
+        ):
     datatable = DataTable(
         id=table_id,
         # columns=[{'name': i, 'id': i} for i in table_df],  # each column can be format individually
@@ -371,35 +356,35 @@ def get_pending_datatable(table_id: str,
         style_data_conditional=[
             {
                 'if': {
-                    'filter_query': '{k_side} = SELL && {status} = placed',
+                    'filter_query': '{k_side} = SELL && {status_name} = placed',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': sell_color_placed
             },
             {
                 'if': {
-                    'filter_query': '{k_side} = BUY && {status} = placed',
+                    'filter_query': '{k_side} = BUY && {status_name} = placed',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': buy_color_placed
             },
             {
                 'if': {
-                    'filter_query': '{k_side} = SELL && {status} = monitor',
+                    'filter_query': '{k_side} = SELL && {status_name} = monitor',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': sell_color_monitor
             },
             {
                 'if': {
-                    'filter_query': '{k_side} = BUY && {status} = monitor',
+                    'filter_query': '{k_side} = BUY && {status_name} = monitor',
                     'column_id': ['price', 'signed_amount', 'signed_total'],
                 },
                 'color': buy_color_monitor
             },
             {
                 'if': {
-                    'filter_query': '{status} = cmp',
+                    'filter_query': '{status_name} = cmp',
                     'column_id': ['price', 'name', 'pt_id', 'signed_total'],
                 },
                 'color': 'orange'

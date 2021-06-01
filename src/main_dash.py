@@ -5,16 +5,12 @@ import logging
 import os
 import inspect
 
-import flask
 from flask import request  # to stop the server
 import pandas as pd
 
 import dash
-import dash_core_components as dcc
-import dash_html_components as html
 from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
-from dash_daq.LEDDisplay import LEDDisplay
 import plotly.express as px
 
 # *********** to run from terminal project folder ***********
@@ -47,8 +43,9 @@ app.layout = main_layout.get_layout(interval=K_INTERVAL)
 
 
 # ********** app callbacks **********
-@app.callback(Output(component_id='example-output', component_property='children'),
-                   [Input(component_id='new-pt-button', component_property='n_clicks')])
+@app.callback(
+    Output(component_id='example-output', component_property='children'),
+    [Input(component_id='new-pt-button', component_property='n_clicks')])
 def on_button_click(n):
     if n is None:
         return 'not clicked yet!'
@@ -86,7 +83,8 @@ def update_chart(timer):
 @app.callback(
     Output("pt-group-chart", "figure"), [Input('update', 'n_intervals')])
 def update_bar_chart(timer):
-    df = session.get_orders_callback()
+    # df = session.get_orders_callback()
+    df = session.get_all_orders_dataframe()
     return daux.get_bar_chart(df=df)
 
 
@@ -126,8 +124,13 @@ def update_tank_btc(timer):
     Input('update', 'n_intervals')
 )
 def update_table(timer):
-    df = session.get_orders_callback()
-    return daux.get_order_tables(df=df)
+    df = session.get_all_orders_dataframe_with_cmp()
+    # sort by price
+    df1 = df.sort_values(by=['price'], ascending=False)
+    # filter by status for each table (monitor-placed & traded)
+    df_pending = df1[df1.status_name.isin(['monitor', 'placed', 'cmp'])]
+    df_traded = df1[df1.status_name.eq('traded')]
+    return df_pending.to_dict('records'), df_traded.to_dict('records')
 
 
 @app.callback(

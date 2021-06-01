@@ -146,6 +146,22 @@ class Session:
         df2 = df1[desired_columns]
         return df2
 
+    def get_all_orders_dataframe(self) -> pd.DataFrame:
+        # get list with all orders: pending (monitor + placed) & traded (completed + pending_pt_id)
+        all_orders = self.orders_book.get_pending_orders() + self.traded_book.get_all_traded_orders()
+        # create dataframe
+        df = pd.DataFrame([order.__dict__ for order in all_orders])
+        # delete status column because it returns a tuple and raises an error in the dash callback
+        df1 = df.drop(columns='status', axis=1)
+        return df1
+
+    def get_all_orders_dataframe_with_cmp(self) -> pd.DataFrame:
+        df = self.get_all_orders_dataframe()
+        # create cmp order-like and add to dataframe
+        cmp_order = dict(pt_id='CMP', status_name='cmp', price=self.last_cmp)
+        df1 = df.append(other=cmp_order, ignore_index=True)
+        return df1
+
     def get_account_balance(self, tag='') -> AccountBalance:
         btc_bal = self.market.get_asset_balance(asset='BTC', tag=tag)
         eur_bal = self.market.get_asset_balance(asset='EUR', tag=tag, p=2)
@@ -376,8 +392,6 @@ class Session:
                 # btc needed => BUY
                 self.balance_amount_needed = True
 
-        # log.info(f'$$ BALANCE CHECK $$  allowance: {balance_allowance} - needed: {balance_needed} - enough: {is_balance_enough}')
-
         return is_balance_enough, balance_needed  # in fact the balance needed will be less
 
     def place_order(self, order) -> (bool, Optional[str]):
@@ -532,5 +546,3 @@ class Session:
             balance_commission += order.bnb_commission
             comm_btc += order.btc_commission
         return balance_amount, balance_total, balance_commission, comm_btc
-
-
