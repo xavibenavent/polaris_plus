@@ -20,7 +20,7 @@ K_BNBEUR = 350.0
 
 K_INITIAL_CMP = 45_000.0
 
-K_UPDATE_RATE = 0.1  # secs
+K_UPDATE_RATE = 0.05  # secs
 
 
 class FakeCmpMode(Enum):

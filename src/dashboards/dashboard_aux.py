@@ -78,6 +78,7 @@ def get_completed_pt_balance(df: pd.DataFrame) -> (float, float):
     eur_balance = df_completed_pt.signed_total.sum()
     return btc_balance, eur_balance
 
+
 def get_completed_pt_df(df: pd.DataFrame) -> pd.DataFrame:
     df_pending = df[df.status.isin(['monitor', 'placed'])]
     df_traded = df[df.status.eq('traded')]
@@ -173,15 +174,16 @@ def get_depth_span_line_chart(df: pd.DataFrame) -> Figure:
     return fig
 
 
-def get_tank(tank_id: str, tank_max: float, label: str):
+def get_tank(tank_id: str, tank_max: float, label: str, show_value: bool = False):
     tank = Tank(
         id=tank_id,
         min=0.0,
         max=tank_max,
         value=tank_max,
-        style={'margin-left': '50px'},
+        style={'margin-left': '50px', 'font-size': '10px'},
         label=label,
         labelPosition='bottom',
+        showCurrentValue=show_value
         # color='#34f533'
     )
     return tank

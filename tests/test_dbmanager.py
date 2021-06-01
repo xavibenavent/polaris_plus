@@ -5,7 +5,7 @@ import os
 from binance import enums as k_binance
 
 from src.pp_order import Order, OrderStatus
-from src.pp_dbmanager import DBManager
+from polaris_old.pp_dbmanager import DBManager
 
 TEST_DATABASE = 'test.db'
 

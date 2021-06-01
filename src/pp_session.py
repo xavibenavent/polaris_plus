@@ -1,9 +1,6 @@
 # pp_session.py
 
 import logging
-import os
-import sys
-from icecream import ic
 from datetime import datetime
 from enum import Enum
 import pandas as pd
@@ -13,10 +10,12 @@ from binance import enums as k_binance
 
 from src.pp_market import Market
 from src.pp_order import Order, OrderStatus
-from src.pp_dbmanager import DBManager
 from src.pp_account_balance import AccountBalance
 from src.xb_pt_calculator import get_pt_values
-from src.pp_orders_book import OrdersBook, SplitDirection
+from src.pp_orders_book import OrdersBook
+from src.pp_traded_book import TradedBook
+from src.pp_strategy import Strategy
+
 # from src.dashboards.indicator import Dashboard
 
 log = logging.getLogger('log')
@@ -34,19 +33,19 @@ K_AUGMENTED_FEE = 10 / 100
 
 
 K_MIN_CYCLES_FOR_FIRST_SPLIT = 100  # the rationale for this parameter is to give time to complete (b1, s1)
-K_DISTANCE_FOR_FIRST_CHILDREN = 150  # 150
+K_DISTANCE_FOR_FIRST_CHILDREN = 100  # 150
 K_DISTANCE_FOR_SECOND_CHILDREN = 300
-K_DISTANCE_INTER_FIRST_CHILDREN = 50.0  # 50
+K_DISTANCE_INTER_FIRST_CHILDREN = 25.0  # 50
 K_DISTANCE_INTER_SECOND_CHILDREN = 50.0
-K_DISTANCE_FIRST_COMPENSATION = 200  # 200.0
+K_DISTANCE_FIRST_COMPENSATION = 150  # 200.0
 K_DISTANCE_SECOND_COMPENSATION = 350.0
-K_GAP_FIRST_COMPENSATION = 50  # 50.0
+K_GAP_FIRST_COMPENSATION = 35  # 50.0
 K_GAP_SECOND_COMPENSATION = 120.0
 
 # K_SPAN_FOR_CONCENTRATION = 500
 K_DISTANCE_FOR_CONCENTRATION = 150
-K_GAP_CONCENTRATION = 50
-K_INTERDISTANCE_AFTER_CONCENTRATION = 25.0
+K_GAP_CONCENTRATION = 200
+K_INTERDISTANCE_AFTER_CONCENTRATION = 50.0
 
 B_TOTAL_BUFFER = 2000.0  # remaining guaranteed EUR balance
 B_AMOUNT_BUFFER = 0.04  # remaining guaranteed BTC balance
@@ -75,10 +74,7 @@ class QuitMode(Enum):
 
 
 class Session:
-    def __init__(self, client_mode: str, new_master_session: bool):
-
-        # used in quit() method
-        self.new_master_session = new_master_session
+    def __init__(self, client_mode: str):  # , new_master_session: bool):
 
         self.market = Market(
             symbol_ticker_callback=self.symbol_ticker_callback,
@@ -86,6 +82,8 @@ class Session:
             account_balance_callback=self.account_balance_callback,
             client_mode=client_mode
         )
+
+        self.strategy = Strategy()
 
         self.cmps = []
         self.cycles_serie = []
@@ -106,60 +104,30 @@ class Session:
         self.dashboard = None
 
         self.new_pt_permission_granted = True
-        # self.one_place_per_cycle_mode = True
-        # self.new_placement_allowed = True
 
         self.cycles_from_last_trade = 0
 
         self.balance_total_needed = False
         self.balance_amount_needed = False
 
-        # TODO: remove when finishing with fake orders
-        # remove orders.db file
-        try:
-            os.remove('src/database/orders.db')
-        except FileNotFoundError as e:
-            log.debug('orders.db file not removed because it does not exist')
-
-        # create the database manager and fill pending orders list
-        self.dbm = self.get_dbm(new_master_session=new_master_session)
-
-        orders_from_previous_sessions = self.dbm.get_orders_from_table(table=PENDING_ORDERS_TABLE)
-        self.orders_book = OrdersBook(orders=orders_from_previous_sessions, dbm=self.dbm, table=PENDING_ORDERS_TABLE)
-
-        # get session data from previous
-        session = self.dbm.get_last_session()
-        print('previous session: ', session)
-
-        # create placed orders list (initially empty)
-        # self.placed: List[Order] = []
-        self.traded: List[Order] = []
+        self.orders_book = OrdersBook(orders=[])
+        self.traded_book = TradedBook()
 
         # get filters that will be checked before placing an order
         self.symbol_filters = self.market.get_symbol_info(symbol='BTCEUR')
 
-        # TODO: uncomment it when finishing with fake orders
-        # show pending orders and already placed orders for user validation
-        # if self.is_initial_state_validated():
         self.market.start_sockets()
-        # else:
-        #     sys.exit()
 
         self.last_cmp = self.market.get_cmp('BTCEUR')
 
         self.ticker_count = 0
 
-        # the first pt is created always, then 2 trades will be needed to create a new one
         self.partial_traded_orders_count = 0
 
     # ********** dashboard callback **********
-
-    def get_last_cmp_callback(self) -> float:
-        return self.last_cmp
-
     def get_orders_callback(self) -> pd.DataFrame:
         # create df for traded orders
-        df_traded = pd.DataFrame([order.__dict__ for order in self.traded])
+        df_traded = pd.DataFrame([order.__dict__ for order in self.traded_book.get_all_traded_orders()])
         df_traded['status'] = 'traded'
         # get df for monitor & placed orders
         df_po = self.orders_book.get_pending_orders_df()
@@ -200,16 +168,6 @@ class Session:
         self.cmps.append(cmp)
         self.cycles_serie.append(self.cmp_count)
 
-        # orders book depth & span
-        depth = abs(self.orders_book.get_depth())
-        if depth > 1000:
-            depth = 0
-        span = abs(self.orders_book.get_span())
-        if span > 1000:
-            span = 0
-        self.orders_book_depth.append(depth)
-        self.orders_book_span.append(span)
-
         self.last_cmp = cmp
         self.cycles_from_last_trade += 1
 
@@ -225,55 +183,55 @@ class Session:
 
         # 5. check inactivity
         if self.cycles_from_last_trade > 125:  # TODO: magic number (5')
-            # create and log new pt
-            # log.info('==============================')
-            # log.info(' created new pt for INACTIVITY')
-            # log.info('==============================')
+            # create new pt
             self.create_new_pt(cmp=cmp)  # direct to create_new_pt(), not to assess_new_pt()
             self.cycles_from_last_trade = 0  # equivalent to trading but without a trade
 
-        # 6. check span reduction (concentration)
-        # sell_count = 0
-        # buy_count = 0
-        # orders_to_concentrate = []
-        # # get number of orders for each side with distance > K_DISTANCE_FOR_CONCENTRATION
-        # for order in self.orders_book.monitor:
-        #     # filter compensated orders
-        #     # if order.compensation_count >= 0 and order.concentration_count == 0:
-        #     # if order.concentration_count == 0:
+        # # 6. check span reduction (concentration)
+        # orders_to_concentrate = self.strategy.assess_concentration(
+        #     last_cmp=cmp,
+        #     check_orders=self.orders_book.monitor)
         #
-        #     if order.k_side == k_binance.SIDE_BUY and order.get_distance(self.last_cmp) > K_DISTANCE_FOR_CONCENTRATION:
-        #         buy_count += 1
-        #         orders_to_concentrate.append(order)
-        #     elif order.k_side == k_binance.SIDE_SELL and order.get_distance(self.last_cmp) > K_DISTANCE_FOR_CONCENTRATION:
-        #         sell_count += 1
-        #         orders_to_concentrate.append(order)
-        #
-        #     # if order.get_distance(cmp=self.last_cmp) > K_DISTANCE_FOR_CONCENTRATION:
-        #     #     orders_to_concentrate.append(order)
-        #
-        # # concentration only if orders in both sides
-        # if buy_count > 0 and sell_count > 0:
-        #     # monitor_orders.sort(key=lambda x: x.price, reverse=True)
-        #     # concentrate & split n (n=5)
+        # if len(orders_to_concentrate) > 0:
         #     if self.orders_book.concentrate_list(
         #             orders=orders_to_concentrate,
+        #             traded_book=self.traded_book,
         #             ref_mp=cmp,
         #             ref_gap=K_GAP_CONCENTRATION,
-        #             n_for_split=3,
+        #             n_for_split=2,
         #             interdistance_after_concentration=K_INTERDISTANCE_AFTER_CONCENTRATION,
         #             buy_fee=PT_BUY_FEE,
         #             sell_fee=PT_SELL_FEE):
         #         # decrease only if compensation Ok
-        #         # no need for decrease because there is not an increase in orders (2 -> 2)
         #         self.partial_traded_orders_count += len(orders_to_concentrate) - 2
         #         log.info('CONCENTRATION OK')
         #     else:
         #         log.critical('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
         #         for order in orders_to_concentrate:
-        #             log.critical(f'CONCENTRATION failed for compensation reasons!!! {order}')
-        # elif buy_count > 0:
-        #     pass
+        #             log.critical(f'CONCENTRATION failed for concentration reasons!!! {order}')
+
+        # 7. check side balance
+        child_count = 3
+        orders_to_balance = self.strategy.assess_side_balance(
+            last_cmp=cmp,
+            check_orders=self.orders_book.monitor)
+        if len(orders_to_balance) > 0:
+            if self.orders_book.concentrate_list(
+                    orders=orders_to_balance,
+                    traded_book=self.traded_book,
+                    ref_mp=cmp,
+                    ref_gap=100,
+                    n_for_split=child_count,
+                    interdistance_after_concentration=25,
+                    buy_fee=PT_BUY_FEE,
+                    sell_fee=PT_SELL_FEE):
+                # decrease only if compensation Ok
+                self.partial_traded_orders_count += len(orders_to_balance) - (2 * child_count)
+                log.info('BALANCE OK')
+            else:
+                log.critical('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+                for order in orders_to_balance:
+                    log.critical(f'BALANCE failed for concentration reasons!!! {order}')
 
     def check_placed_list_for_move_back(self, cmp: float):
         for order in self.orders_book.placed:
@@ -290,7 +248,7 @@ class Session:
                     and order.split_count == 0 \
                     and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_FIRST_CHILDREN:  # 150
                 # split into 3 children
-                child_count = 3
+                child_count = 2
                 self.orders_book.split_n_order(
                     order=order,
                     inter_distance=K_DISTANCE_INTER_FIRST_CHILDREN,
@@ -358,24 +316,19 @@ class Session:
                     commission=bnb_commission,
                     bnbbtc_rate=self.market.get_cmp(symbol='BNBBTC'))
                 order.price = order_price
-                # log
-                # log.info(f'********** ORDER TRADED ********** {order}')
                 # change status
                 order.set_status(status=OrderStatus.TRADED)
-                # add to traded_orders table
-                self.dbm.add_order(table=TRADED_ORDERS_TABLE, order=order)
-                # remove from pending_orders table
-                self.dbm.delete_order(table=PENDING_ORDERS_TABLE, order=order)
                 # remove from placed list
                 self.orders_book.placed.remove(order)
-                # add to traded list
-                self.traded.append(order)
-                # get & log global balance
-                self.log_global_balance()
+                # add to traded list (once removed from placed list) depending on whether is pt_id completed or not
+                if self.orders_book.has_completed_pt_id(order=order):
+                    # completed
+                    self.traded_book.add_completed(order=order)
+                else:
+                    self.traded_book.add_pending(order=order)
 
-                # TODO: this is the new concept in the strategy
+                # update counter for next pt
                 self.partial_traded_orders_count += 1
-
                 # check whether a new pt is allowed or not
                 if self.pt_created_count < PT_CREATED_COUNT_MAX and self.partial_traded_orders_count >= 0:
                     self.create_new_pt(cmp=self.last_cmp)
@@ -385,38 +338,12 @@ class Session:
                 break
 
     def get_traded_balance_callback(self) -> float:
-        amount, total, commission, btc = self.get_balance_for_list(self.traded)
-        btceur = self.last_cmp
-        bnbbtc = self.market.get_cmp(symbol='BNBBTC')
+        amount, total, commission, btc = self.get_balance_for_list(self.traded_book.get_all_traded_orders())
+        # btceur = self.last_cmp
+        # bnbbtc = self.market.get_cmp(symbol='BNBBTC')
         # net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
         net_balance_btc = amount - btc
         return net_balance_btc
-
-    def modified_traded_balance_callback(selfself) -> float:
-        pass
-
-    def log_global_balance(self):
-        pass
-        # amount, total, commission, btc = self.get_balance_for_list(self.traded)
-        # print(f'amount: {amount} total: {total} commission: {commission}')
-        # btceur = self.last_cmp
-        # bnbbtc = self.market.get_cmp(symbol='BNBBTC')
-        # log.info('========== GLOBAL BALANCE (TRADED ORDERS) ==========')
-        # log.info(f'amount: {amount:,.8f} - total: {total:,.2f} - commission: {commission:,.8f} [BNB]')
-        # net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
-        # log.info('***********************************************************')
-        # log.info(f'********** ACTUAL NET BALANCE: {net_balance_btc:,.8f} [BTC] **********')
-        # log.info('***********************************************************')
-        # all_orders = self.traded + self.orders_book.get_all_orders()
-        # for order in all_orders:
-        #     log.info({order})
-        # amount, total, commission, btc = self.get_balance_for_list(all_orders)
-        # log.info('========== GLOBAL BALANCE (ALL ORDERS) ==========')
-        # log.info(f'amount: {amount:,.8f} - total: {total:,.2f} - commission: {commission:,.8f} [BNB]')
-        # net_balance_btc = amount + (total / btceur) - (commission * bnbbtc)
-        # log.info('*************************************************************')
-        # log.info(f'********** EXPECTED NET BALANCE: {net_balance_btc:,.8f} [BTC] **********')
-        # log.info('*************************************************************')
 
     def account_balance_callback(self, ab: AccountBalance) -> None:
         self.current_ab = ab
@@ -505,9 +432,6 @@ class Session:
         b1, s1 = self.get_new_pt(dynamic_parameters=dp, is_default=is_default)
 
         if b1 and s1:
-            # add orders to database
-            self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=b1)
-            self.dbm.add_order(table=PENDING_ORDERS_TABLE, order=s1)
             # add orders to list
             self.orders_book.monitor.append(b1)
             self.orders_book.monitor.append(s1)
@@ -537,9 +461,6 @@ class Session:
             order_id = 'DEFAULT'
         else:
             order_id = 'SHIFTED'
-
-        # set pt_id
-        # pt_id = f'{self.pt_created_count:03}'
 
         # get perfect trade
         b1_qty, b1_price, s1_price, g = get_pt_values(**dynamic_parameters)
@@ -597,18 +518,6 @@ class Session:
         else:
             log.info(f'LOCKED BALANCE CHECK CORRECT: btc_balance: {btc_bal} - eur_balance: {eur_bal}')
 
-        if self.new_master_session:
-            # save session data
-            session = {
-                'session_id': self.session_id,
-                'btc': self.current_ab.s1.get_total(),
-                'eur': self.current_ab.s2.get_total(),
-                'bnb': self.current_ab.bnb.get_total(),
-                'btc_equivalent': self.current_ab.get_btc_equivalent()
-            }
-            print('session: ', session)
-            self.dbm.add_session(session=session)
-
         self.market.stop()
 
     @staticmethod
@@ -624,43 +533,4 @@ class Session:
             comm_btc += order.btc_commission
         return balance_amount, balance_total, balance_commission, comm_btc
 
-    @staticmethod
-    def get_dbm(new_master_session: bool) -> DBManager:
-        try:
-            return DBManager(db_name=DATABASE_FILE,
-                             order_tables=[PENDING_ORDERS_TABLE,
-                                           TRADED_ORDERS_TABLE],
-                             new_master_session=new_master_session)
-        except AttributeError as e:
-            log.critical(e)
-            sys.exit()
 
-    def is_initial_state_validated(self) -> bool:
-        allowed = False
-
-        print('\n********** INITIAL SANITY X-CHECK (ISOLATED ORDERS) **********')
-
-        print('\n********** (monitor) pending orders LIST: (order status: MONITOR) **********')
-        for order in self.orders_book.monitor:
-            print(order)
-
-        print('\n********** pending orders TABLE: **********')
-        pending_orders_table = self.dbm.get_orders_from_table(table=PENDING_ORDERS_TABLE)
-        for order in pending_orders_table:
-            print(order)
-
-        print('\n********** active orders LIST: (order status: PLACED) **********')
-        for order in self.orders_book.placed:
-            print(order)
-        print('          (it should be empty)')
-
-        print('\n********** traded orders TABLE: (order status: TRADED) **********')
-        for order in self.dbm.get_orders_from_table(table=TRADED_ORDERS_TABLE):
-            print(order)
-        print('          (it should be empty)')
-
-        user_input = input(f'\nvalidation needed before session start. is it ok? (y/n) ')
-        if user_input == 'y':
-            allowed = True
-
-        return allowed

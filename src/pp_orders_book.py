@@ -1,7 +1,6 @@
 # pp_orders_book.py
 
 import pandas as pd
-import plotly.express as px
 import logging
 from typing import List
 from binance import enums as k_binance
@@ -9,7 +8,8 @@ from enum import Enum
 
 from src.pp_order import Order, OrderStatus
 from src.xb_pt_calculator import get_compensation
-from src.pp_dbmanager import DBManager
+from polaris_old.pp_dbmanager import DBManager
+from src.pp_traded_book import TradedBook
 # from src.pp_session import DATABASE_FILE, PENDING_ORDERS_TABLE
 
 log = logging.getLogger('log')
@@ -21,7 +21,7 @@ class SplitDirection(Enum):
 
 
 class OrdersBook:
-    def __init__(self, orders: List[Order], dbm: DBManager, table: str):
+    def __init__(self, orders: List[Order]):  # , dbm: DBManager, table: str):
         # e = True
         # if e:
         #     raise AssertionError
@@ -30,8 +30,8 @@ class OrdersBook:
 
         self.concentrated_count = 1
 
-        self.dbm = dbm
-        self.table = table
+        # self.dbm = dbm
+        # self.table = table
 
         # add each order to its appropriate list
         for order in orders:
@@ -67,6 +67,23 @@ class OrdersBook:
 
     def get_all_orders(self) -> List[Order]:
         return self.monitor
+
+    def get_pending_orders(self) -> List[Order]:
+        return self.monitor + self.placed
+
+    def get_pending_pt_id(self) -> List[str]:
+        # return the list of pt_id not completed
+        pending_pt_id = []
+        for order in self.get_pending_orders():
+            if order.pt_id not in pending_pt_id:
+                pending_pt_id.append(order.pt_id)
+        return pending_pt_id
+
+    def has_completed_pt_id(self, order: Order) -> bool:
+        if order.pt_id in self.get_pending_pt_id():
+            return False
+        else:
+            return True
 
     def get_order(self, uid: str) -> Order:
         # for order in self.get_all_orders():
@@ -128,14 +145,14 @@ class OrdersBook:
             self.monitor.append(s1)
 
             # add new orders to pending_orders table
-            self.dbm.add_order(order=b1, table=self.table)
-            self.dbm.add_order(order=s1, table=self.table)
+            # self.dbm.add_order(order=b1, table=self.table)
+            # self.dbm.add_order(order=s1, table=self.table)
 
             # delete original order from list
             self.monitor.remove(order)
 
             # delete original order from pending_orders table
-            self.dbm.delete_order(order=order, table=self.table)
+            # self.dbm.delete_order(order=order, table=self.table)
 
             # log
             log.info('////////// ORDER COMPENSATED //////////')
@@ -156,6 +173,7 @@ class OrdersBook:
 
     def concentrate_list(self,
                          orders: List[Order],
+                         traded_book: TradedBook,
                          ref_mp: float,
                          ref_gap: float,
                          n_for_split: int,
@@ -185,23 +203,17 @@ class OrdersBook:
             for order in orders:
                 if order.pt_id not in pt_ids:
                     pt_ids.append(order.pt_id)
-            # change orders with this pt_id to new pt_id
+            # change pending orders with this pt_id to new pt_id
             new_pt_id = f'C-{self.concentrated_count:03}'
-            all_orders = self.monitor
-            all_orders.extend(self.placed)
-            for order in all_orders:
+            for order in self.get_pending_orders():
                 if order.pt_id in pt_ids:
                     order.pt_id = new_pt_id
             # change pt_id also in traded orders
-            traded_orders = self.dbm.get_orders_from_table(table='traded_orders')
-            for order in traded_orders:
-                if order.pt_id in pt_ids:
-                    log.info(f'order before updating: {order}')
-                    self.dbm.update_order_pt_id(table='traded_orders', new_pt_id=new_pt_id, uid=order.uid)
+            traded_book.set_new_pt_id(new_pt_id=new_pt_id, pt_id_list=pt_ids)
 
             # create both orders
             b1 = Order(
-                session_id=orders[0].session_id,  # session id of the first order (it might be from another session)
+                session_id=orders[0].session_id,
                 order_id='CONCENTRATED',
                 pt_id=new_pt_id,
                 k_side=k_binance.SIDE_BUY,
@@ -227,15 +239,9 @@ class OrdersBook:
             self.monitor.append(b1)
             self.monitor.append(s1)
 
-            # add new orders to pending_orders table
-            self.dbm.add_order(order=b1, table=self.table)
-            self.dbm.add_order(order=s1, table=self.table)
-
             # delete original orders from list
             for order in orders:
                 self.monitor.remove(order)
-                # delete original order from pending_orders table
-                self.dbm.delete_order(order=order, table=self.table)
 
             # log
             log.info('////////// ORDER COMPENSATED //////////')
@@ -249,17 +255,15 @@ class OrdersBook:
             b1.concentration_count = 1
             s1.concentration_count = 1
             self.concentrated_count += 1
-            # if self.concentrated_count < 100:
-            #     log.critical(f'concentrated count reaching 0: {self.concentrated_count}')
 
             # update variables
-            b1.compensation_count = orders[0].compensation_count
-            b1.split_count = orders[0].split_count
-            s1.compensation_count = orders[-1].compensation_count
-            s1.split_count = orders[-1].split_count
+            b1.compensation_count = 0
+            b1.split_count = 0
+            s1.compensation_count = 0
+            s1.split_count = 0
 
             # split n
-            self.split_n_order(order=b1, inter_distance=interdistance_after_concentration, child_count=n_for_split)  # n = 5
+            self.split_n_order(order=b1, inter_distance=interdistance_after_concentration, child_count=n_for_split)
             self.split_n_order(order=s1, inter_distance=interdistance_after_concentration, child_count=n_for_split)
 
             return True
@@ -288,7 +292,7 @@ class OrdersBook:
         left.compensation_count = order.compensation_count
         # add to monitor and pending_orders table
         self.monitor.append(left)
-        self.dbm.add_order(order=left, table=self.table)
+        # self.dbm.add_order(order=left, table=self.table)
         log.info(f'left:   {left}')
 
         right = Order(
@@ -306,7 +310,7 @@ class OrdersBook:
         right.compensation_count = order.compensation_count
         # add to monitor and pending_orders table
         self.monitor.append(right)
-        self.dbm.add_order(order=right, table=self.table)
+        # self.dbm.add_order(order=right, table=self.table)
         log.info(f'right:  {right}')
 
         if child_count == 3:
@@ -325,14 +329,14 @@ class OrdersBook:
             center.compensation_count = order.compensation_count
             # add to monitor and pending_orders table
             self.monitor.append(center)
-            self.dbm.add_order(order=center, table=self.table)
+            # self.dbm.add_order(order=center, table=self.table)
             log.info(f'center: {center}')
 
         # delete original order from orders book
         self.monitor.remove(order)
 
         # delete original order from pending orders table
-        self.dbm.delete_order(order=order, table=self.table)
+        # self.dbm.delete_order(order=order, table=self.table)
 
         return new_orders
 
@@ -368,13 +372,13 @@ class OrdersBook:
             new_order.concentration_count = order.concentration_count
             # add to monitor and pending_orders table
             self.monitor.append(new_order)
-            self.dbm.add_order(order=new_order, table=self.table)
+            # self.dbm.add_order(order=new_order, table=self.table)
 
         # delete original order from orders book
         self.monitor.remove(order)
 
         # delete original order from pending orders table
-        self.dbm.delete_order(order=order, table=self.table)
+        # self.dbm.delete_order(order=order, table=self.table)
 
     # ********* pandas methods **********
 

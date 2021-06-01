@@ -37,7 +37,7 @@ XBLogger()
 log = logging.getLogger('log')
 
 # TODO: remove, here the app arguments have been forced to simplify gunicorn test
-session = Session(client_mode='simulated', new_master_session=True)
+session = Session(client_mode='simulated')  # , new_master_session=True)
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
@@ -106,24 +106,19 @@ def update_led(timer):
     trades_to_new_pt = session.partial_traded_orders_count
     # return f'{trades_to_new_pt:02.0f}', f'{satoshi_balance:.0f}'
     cycles_from_last = session.cycles_from_last_trade
-    return f'{trades_to_new_pt:02.0f}', f'{satoshi_balance:.0f}', \
-           f'{eur_balance_completed_pt:,.2f}', f'{cycles_from_last}'
+    return f'{trades_to_new_pt:06.0f}', f'{satoshi_balance:.0f}', \
+           f'{eur_balance_completed_pt:,.2f}', f'{cycles_from_last:06.0f}'
 
 
 @app.callback(
-    Output('daq-tank-btc', 'value'), Input('update', 'n_intervals')
+    Output('daq-tank-btc', 'value'),
+    Output('daq-tank-eur', 'value'),
+    Output('daq-tank-bnb', 'value'),
+    Input('update', 'n_intervals')
 )
 def update_tank_btc(timer):
     account_balance = session.get_account_balance()
-    return account_balance.s1.free  # , account_balance.s2.free
-
-
-@app.callback(
-    Output('daq-tank-eur', 'value'), Input('update', 'n_intervals')
-)
-def update_tank_eur(timer):
-    account_balance = session.get_account_balance()
-    return account_balance.s2.free
+    return account_balance.s1.free, account_balance.s2.free, account_balance.bnb.free
 
 
 @app.callback(
@@ -156,18 +151,6 @@ def update_cmp_line_chart(timer):
     df['rate'] = df.index
     # create line chart
     fig = daux.get_cmp_line_chart(df=df, cmps=cmps)
-    return fig
-
-
-@app.callback(
-    Output('orders-depth', 'figure'), Input('update', 'n_intervals')
-)
-def update_depth_line_chart(timer):
-    depths = session.orders_book_depth
-    spans = session.orders_book_span
-    df = pd.DataFrame(data=dict(depth=depths, span=spans))
-    df['rate'] = df.index
-    fig = daux.get_depth_span_line_chart(df=df)
     return fig
 
 

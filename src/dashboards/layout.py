@@ -1,14 +1,12 @@
 # layout.py
 
-import dash
 import dash_core_components as dcc
 import dash_html_components as html
-from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
 from dash_daq.LEDDisplay import LEDDisplay
-import plotly.express as px
 
 import src.dashboards.dashboard_aux as daux
+
 
 # ********** dashboard layout **********
 def get_layout(interval: float):
@@ -17,14 +15,20 @@ def get_layout(interval: float):
             dbc.Col(html.H1("Session dashboard", style={'text-align': 'center'}))
         ]),
         dbc.Row([
+            # ********** balance Tanks **********
             dbc.Col(
                 children=daux.get_tank(tank_id='daq-tank-btc', tank_max=0.4, label='BTC (free)'),
-                width={'size': 1, 'offset': 1}
+                width={'size': 1, 'offset': 0},
             ),
             dbc.Col(
                 children=daux.get_tank(tank_id='daq-tank-eur', tank_max=20_000.0, label='EUR (free)'),
                 width={'size': 1, 'offset': 0}
             ),
+            dbc.Col(
+                children=daux.get_tank(tank_id='daq-tank-bnb', tank_max=50.0, label='BNB (free)', show_value=True),
+                width={'size': 1, 'offset': 0}
+            ),
+            # ********** monitoring LEDs **********
             dbc.Col(
                 children=[
                     LEDDisplay(id='trades-to-new-pt', label='trades to new pt', value='0', color='SeaGreen'),
@@ -38,8 +42,9 @@ def get_layout(interval: float):
                     dbc.Button('STOP SIMULATION', id='new-pt-button', color='success', block=True),
                     html.Span(id="example-output", style={"vertical-align": "middle"})
                 ],
-                width={'size': 2, 'offset': 1}
+                width={'size': 2, 'offset': 1},
             ),
+            # ********** completed pt balance **********
             dbc.Col([
                 dcc.Graph(id='completed-pt-balance-chart'),
             ], width={'size': 6})
@@ -78,9 +83,6 @@ def get_layout(interval: float):
                 ),
                 dcc.Graph(id='daily-line', figure={}, config={'displayModeBar': False}),
             ]),
-            dbc.Col([
-                dcc.Graph(id='orders-depth', figure={}),
-            ], width={'size': 4})
         ]),
         # component to update the app every n seconds
         dcc.Interval(id='update', n_intervals=0, interval=1000 * interval)
