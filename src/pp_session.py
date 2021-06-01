@@ -15,6 +15,7 @@ from src.xb_pt_calculator import get_pt_values
 from src.pp_orders_book import OrdersBook
 from src.pp_traded_book import TradedBook
 from src.pp_strategy import Strategy
+from src.pp_balance_manager import BalanceManager
 
 # from src.dashboards.indicator import Dashboard
 
@@ -84,16 +85,17 @@ class Session:
         )
 
         self.strategy = Strategy()
+        self.bm = BalanceManager()
 
         self.cmps = []
         self.cycles_serie = []
         self.orders_book_depth = []
         self.orders_book_span = []
 
-        # set account balance variables
-        self.initial_ab = self.get_account_balance(tag='initial')
-        self.current_ab = self.get_account_balance(tag='current')
-        self.net_ab = self.current_ab - self.initial_ab
+        # # set account balance variables
+        # self.initial_ab = self.get_account_balance(tag='initial')
+        # self.current_ab = self.get_account_balance(tag='current')
+        # self.net_ab = self.current_ab - self.initial_ab
 
         self.session_id = f'S_{datetime.now().strftime("%Y%m%d_%H%M")}'
         self.pt_created_count = 0
@@ -107,8 +109,8 @@ class Session:
 
         self.cycles_from_last_trade = 0
 
-        self.balance_total_needed = False
-        self.balance_amount_needed = False
+        # self.balance_total_needed = False
+        # self.balance_amount_needed = False
 
         self.orders_book = OrdersBook(orders=[])
         self.traded_book = TradedBook()
@@ -162,12 +164,12 @@ class Session:
         df1 = df.append(other=cmp_order, ignore_index=True)
         return df1
 
-    def get_account_balance(self, tag='') -> AccountBalance:
-        btc_bal = self.market.get_asset_balance(asset='BTC', tag=tag)
-        eur_bal = self.market.get_asset_balance(asset='EUR', tag=tag, p=2)
-        bnb_bal = self.market.get_asset_balance(asset='BNB', tag=tag)
-        d = dict(s1=btc_bal, s2=eur_bal, bnb=bnb_bal)
-        return AccountBalance(d)
+    # def get_account_balance(self, tag='') -> AccountBalance:
+    #     btc_bal = self.market.get_asset_balance(asset='BTC', tag=tag)
+    #     eur_bal = self.market.get_asset_balance(asset='EUR', tag=tag, p=2)
+    #     bnb_bal = self.market.get_asset_balance(asset='BNB', tag=tag)
+    #     d = dict(s1=btc_bal, s2=eur_bal, bnb=bnb_bal)
+    #     return AccountBalance(d)
 
     # ********** socket callback functions **********
 
