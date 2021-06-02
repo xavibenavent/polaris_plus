@@ -3,7 +3,7 @@
 import unittest
 
 from src.pp_order import Order, OrderStatus
-from src.pp_orders_book import PendingOrdersBook
+from src.pp_pending_orders_book import PendingOrdersBook
 from binance import enums as k_binance
 
 import pandas as pd

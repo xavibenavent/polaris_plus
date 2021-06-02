@@ -40,8 +40,7 @@ def get_bar_chart(df: pd.DataFrame) -> Figure:
 
 
 def get_completed_pt_chart(df: pd.DataFrame) -> Figure:
-    dfc = df.copy()
-    # df['btc_net_balance'] = (df.signed_amount - df.btc_commission) * 1e8
+    dfc = df.copy()  # to avoid warning in console
     dfc['btc_net_balance'] = (dfc.signed_amount - dfc.btc_commission) * 1e8
     df1 = dfc.groupby('pt_id', as_index=False).agg({'btc_net_balance': 'sum'})
     fig = px.bar(
@@ -66,8 +65,8 @@ def get_completed_pt_balance(df: pd.DataFrame) -> (float, float):
 
 
 def get_completed_pt_df(df: pd.DataFrame) -> pd.DataFrame:
-    df_pending = df[df.status.isin(['monitor', 'placed'])]
-    df_traded = df[df.status.eq('traded')]
+    df_pending = df[df.status_name.isin(['monitor', 'placed'])]
+    df_traded = df[df.status_name.eq('traded')]
     # get pt_id in traded and not in pending -> completed pt list
     pt_in_pending = df_pending.pt_id.unique().tolist()
     pt_in_traded = df_traded.pt_id.unique().tolist()

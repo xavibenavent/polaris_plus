@@ -61,7 +61,7 @@ class BalanceManager:
         return is_balance_enough, balance_needed  # in fact the balance needed will be less
 
     @staticmethod
-    def get_balance_for_list(orders: List[Order]) -> (float, float, float):
+    def get_balance_for_list(orders: List[Order]) -> (float, float, float, float):
         balance_amount = 0.0
         balance_total = 0.0
         balance_commission = 0.0
@@ -72,4 +72,3 @@ class BalanceManager:
             balance_commission += order.bnb_commission
             comm_btc += order.btc_commission
         return balance_amount, balance_total, balance_commission, comm_btc
-

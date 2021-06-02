@@ -58,7 +58,7 @@ def on_button_click(n):
 @app.callback(
     Output('completed-pt-balance-chart', 'figure'), Input('update', 'n_intervals'))
 def update_chart(timer):
-    df = session.get_orders_callback()
+    df = session.get_all_orders_dataframe()
     # get dataframe with orders from completed pt
     completed_pt_df = daux.get_completed_pt_df(df=df)
     fig = daux.get_completed_pt_chart(df=completed_pt_df)
@@ -83,7 +83,6 @@ def update_chart(timer):
 @app.callback(
     Output("pt-group-chart", "figure"), [Input('update', 'n_intervals')])
 def update_bar_chart(timer):
-    # df = session.get_orders_callback()
     df = session.get_all_orders_dataframe()
     return daux.get_bar_chart(df=df)
 
@@ -96,7 +95,7 @@ def update_bar_chart(timer):
     Input('update', 'n_intervals')
 )
 def update_led(timer):
-    df = session.get_orders_callback()
+    df = session.get_all_orders_dataframe()
     # get balance from orders from completed pt
     btc_balance_completed_pt, eur_balance_completed_pt = daux.get_completed_pt_balance(df=df)
     # balance = self.session.get_traded_balance_callback()

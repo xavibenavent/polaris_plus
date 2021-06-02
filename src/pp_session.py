@@ -12,10 +12,11 @@ from src.pp_market import Market
 from src.pp_order import Order, OrderStatus
 from src.pp_account_balance import AccountBalance
 from src.xb_pt_calculator import get_pt_values
-from src.pp_orders_book import PendingOrdersBook
-from src.pp_traded_book import TradedOrdersBook
+from src.pp_pending_orders_book import PendingOrdersBook
+from src.pp_traded_orders_book import TradedOrdersBook
 from src.pp_strategy_manager import StrategyManager
 from src.pp_balance_manager import BalanceManager
+from src.pp_concentrator import ConcentratorManager
 
 log = logging.getLogger('log')
 
@@ -71,10 +72,15 @@ class Session:
         )
 
         # ********** managers **********
-        self.sm = StrategyManager()
         self.bm = BalanceManager(market=self.market)
         self.pob = PendingOrdersBook(orders=[])
         self.tob = TradedOrdersBook()
+
+        self.cm = ConcentratorManager(pob=self.pob, tob=self.tob)
+
+        self.sm = StrategyManager(pob=self.pob, cm=self.cm)
+
+        # *********** concentrator **********
 
         self.cmps = []
         self.cycles_serie = []
@@ -87,7 +93,7 @@ class Session:
         self.sell_count = 0
         self.cmp_count = 0
 
-        self.dashboard = None
+        # self.dashboard = None
 
         self.new_pt_permission_granted = True
 
@@ -105,26 +111,6 @@ class Session:
         self.partial_traded_orders_count = 0
 
     # ********** dashboard callback functions **********
-    def get_orders_callback(self) -> pd.DataFrame:
-        # create df for traded orders
-        df_traded = pd.DataFrame([order.__dict__ for order in self.tob.get_all_traded_orders()])
-        df_traded['status'] = 'traded'
-        # get df for monitor & placed orders
-        df_po = self.pob.get_pending_orders_df()
-        # append all
-        all_orders_df = df_po.append(df_traded)
-        # add cmp (order-like)
-        cmp_order = dict(pt_id='-', name='-', k_side='BUY', price=self.last_cmp, signed_amount='-',
-                         signed_total='-', status='cmp', bnb_commission='-', btc_commission='-',
-                         compensation_count='-', split_count='-', concentration_count='-')
-        df1 = all_orders_df.append(other=cmp_order, ignore_index=True)
-        # keep only desired columns
-        desired_columns = ['pt_id', 'name', 'k_side', 'price',
-                           'signed_amount', 'signed_total',
-                           'bnb_commission', 'status', 'btc_commission',
-                           'compensation_count', 'split_count', 'concentration_count']
-        df2 = df1[desired_columns]
-        return df2
 
     def get_all_orders_dataframe(self) -> pd.DataFrame:
         # get list with all orders: pending (monitor + placed) & traded (completed + pending_pt_id)
@@ -163,9 +149,12 @@ class Session:
         # 2. loop through placed orders and move to monitor list if isolated
         self.check_placed_list_for_move_back(cmp=cmp)
 
+        # strategy manager
+        self.partial_traded_orders_count += self.sm.assess_strategy_actions(cmp=cmp)
+
         # 3. check for possible compensations
         # TODO: check it
-        self.check_monitor_list_for_compensation(cmp=cmp)
+        # self.check_monitor_list_for_compensation(cmp=cmp)
 
         # 4. loop through monitoring orders and place to Binance when appropriate
         self.check_monitor_list_for_placing(cmp=cmp)
@@ -200,27 +189,24 @@ class Session:
         #             log.critical(f'CONCENTRATION failed for concentration reasons!!! {order}')
 
         # 7. check side balance
-        child_count = 3
+        child_count = 0  # TODO: set to 3
         orders_to_balance = self.sm.assess_side_balance(
             last_cmp=cmp,
             check_orders=self.pob.monitor)
         if len(orders_to_balance) > 0:
-            if self.pob.concentrate_list(
+            if self.cm.concentrate_orders(
                     orders=orders_to_balance,
-                    traded_book=self.tob,
                     ref_mp=cmp,
                     ref_gap=100,
-                    n_for_split=child_count,
-                    interdistance_after_concentration=25,
-                    buy_fee=PT_BUY_FEE,
-                    sell_fee=PT_SELL_FEE):
+                    ):
                 # decrease only if compensation Ok
-                self.partial_traded_orders_count += len(orders_to_balance) - (2 * child_count)
-                log.info('BALANCE OK')
+                # TODO: correct it
+                self.partial_traded_orders_count += len(orders_to_balance) - 2 - child_count
+                log.info('SIDE BALANCE OK')
             else:
                 log.critical('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
                 for order in orders_to_balance:
-                    log.critical(f'BALANCE failed for concentration reasons!!! {order}')
+                    log.critical(f'SIDE BALANCE failed for concentration reasons!!! {order}')
 
     def check_placed_list_for_move_back(self, cmp: float):
         for order in self.pob.placed:
@@ -228,37 +214,6 @@ class Session:
                 self.pob.place_back_order(order=order)
                 # cancel order in Binance
                 self.market.cancel_orders(orders=[order])
-
-    def check_monitor_list_for_compensation(self, cmp: float):
-        for order in self.pob.monitor:
-            # first split
-            if order.cycles_count > K_MIN_CYCLES_FOR_FIRST_SPLIT \
-                    and order.compensation_count == 0 \
-                    and order.split_count == 0 \
-                    and order.get_distance(cmp=cmp) > K_DISTANCE_FOR_FIRST_CHILDREN:  # 150
-                # split into 3 children
-                child_count = 2
-                self.pob.split_n_order(
-                    order=order,
-                    inter_distance=K_DISTANCE_INTER_FIRST_CHILDREN,
-                    child_count=child_count,
-                )
-                self.partial_traded_orders_count -= (child_count - 1)
-            # first compensation
-            elif order.compensation_count == 0 \
-                    and order.split_count == 1 \
-                    and order.get_distance(cmp=cmp) > K_DISTANCE_FIRST_COMPENSATION:  # 200
-                # compensate
-                if self.pob.compensate_order(  # return true if compensation Ok
-                        order=order,
-                        ref_mp=cmp,
-                        ref_gap=K_GAP_FIRST_COMPENSATION,  # 50
-                        buy_fee=PT_BUY_FEE,
-                        sell_fee=PT_SELL_FEE):
-                    # decrease only if compensation Ok
-                    self.partial_traded_orders_count -= 1
-                else:
-                    log.critical(f'compensation failed!!! {order}')
 
     def check_monitor_list_for_placing(self, cmp: float):
         new_placement_allowed = True

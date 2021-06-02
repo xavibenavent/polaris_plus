@@ -1,4 +1,6 @@
 # xb_pt_calculator.py
+import sys
+
 
 def get_pt_values(
         mp: float,  # reference market price
@@ -31,16 +33,21 @@ def get_compensation(
         gap: gap
         qty_bal: 1st symbol balance in BTC/EUR
         price_bal: 2nd symbol balance"""
-    s1_p = cmp + gap
-    b1_p = cmp - gap
-    a = price_bal + b1_p * qty_bal * (1 + buy_fee)
-    b = s1_p * (1 - sell_fee) - b1_p * (1 + buy_fee)
-    s1_qty = a / b
-    b1_qty = qty_bal + s1_qty
+    try:
+        s1_p = cmp + gap
+        b1_p = cmp - gap
+        a = price_bal + b1_p * qty_bal * (1 + buy_fee)
+        b = s1_p * (1 - sell_fee) - b1_p * (1 + buy_fee)
+        s1_qty = a / b
+        b1_qty = qty_bal + s1_qty
 
-    n1 = (1 + sell_fee) / (1-buy_fee)
-    n2 = qty_bal / (1 - buy_fee)
-    s1_qty = (price_bal + b1_p * n2) / (s1_p - b1_p * n1)
-    b1_qty = s1_qty * n1 + n2
+        n1 = (1 + sell_fee) / (1-buy_fee)
+        n2 = qty_bal / (1 - buy_fee)
+        s1_qty = (price_bal + b1_p * n2) / (s1_p - b1_p * n1)
+        b1_qty = s1_qty * n1 + n2
+    except ZeroDivisionError as e:
+        print(e)
+        print(f's1_p: {s1_p} b1_p: {b1_p} n1: {n1} b1_p * n1: {b1_p * n1}')
+        sys.exit()
 
     return s1_p, b1_p, s1_qty, b1_qty
