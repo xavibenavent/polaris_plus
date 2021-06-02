@@ -149,12 +149,8 @@ class Session:
         # 2. loop through placed orders and move to monitor list if isolated
         self.check_placed_list_for_move_back(cmp=cmp)
 
-        # strategy manager
+        # strategy manager and update of trades needed for new pt
         self.partial_traded_orders_count += self.sm.assess_strategy_actions(cmp=cmp)
-
-        # 3. check for possible compensations
-        # TODO: check it
-        # self.check_monitor_list_for_compensation(cmp=cmp)
 
         # 4. loop through monitoring orders and place to Binance when appropriate
         self.check_monitor_list_for_placing(cmp=cmp)
@@ -187,26 +183,6 @@ class Session:
         #         log.critical('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
         #         for order in orders_to_concentrate:
         #             log.critical(f'CONCENTRATION failed for concentration reasons!!! {order}')
-
-        # 7. check side balance
-        child_count = 0  # TODO: set to 3
-        orders_to_balance = self.sm.assess_side_balance(
-            last_cmp=cmp,
-            check_orders=self.pob.monitor)
-        if len(orders_to_balance) > 0:
-            if self.cm.concentrate_orders(
-                    orders=orders_to_balance,
-                    ref_mp=cmp,
-                    ref_gap=100,
-                    ):
-                # decrease only if compensation Ok
-                # TODO: correct it
-                self.partial_traded_orders_count += len(orders_to_balance) - 2 - child_count
-                log.info('SIDE BALANCE OK')
-            else:
-                log.critical('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-                for order in orders_to_balance:
-                    log.critical(f'SIDE BALANCE failed for concentration reasons!!! {order}')
 
     def check_placed_list_for_move_back(self, cmp: float):
         for order in self.pob.placed:

@@ -39,17 +39,18 @@ class StrategyManager:
         # main strategy
         trades_to_new_pt_delta = 0
 
-        # assess n-child in monitor list
-        trades_to_new_pt_delta += self.check_monitor_list_for_n_child(cmp=cmp)
+        # 1. assess n-child in monitor list
+        # trades_to_new_pt_delta += self.check_monitor_list_for_n_child(cmp=cmp)
 
-        # assess compensation in monitor list
+        # 2. assess compensation in monitor list
         # trades_to_new_pt_delta += self.check_monitor_list_for_compensation(cmp=cmp)
 
-        # assess extreme pairs b1-s1 to concentrate
+        # 3. assess extreme pairs b1-s1 to concentrate
         # TODO: implement it
 
-        # assess isolated side orders to balance
+        # 4. assess isolated side orders to balance
         # TODO: implement it
+        trades_to_new_pt_delta += self.check_side_balance(last_cmp=cmp)
 
         return trades_to_new_pt_delta
 
@@ -108,25 +109,48 @@ class StrategyManager:
             return orders_to_concentrate
         return []
 
-    def assess_side_balance(self, last_cmp: float, check_orders: List[Order]) -> List[Order]:
+    def check_side_balance(self, last_cmp: float) -> float:
+        trades_to_new_pt_delta = 0  # return value
         sell_count = 0
         buy_count = 0
         orders_to_balance: List[Order] = []
+        orders: List[Order] = []
+        child_count = 0
         # get number of orders for each side with distance > K_DISTANCE_FOR_CONCENTRATION
-        for order in check_orders:
+        for order in self.pob.monitor:
             if order.concentration_count == 0:
                 if order.k_side == k_binance.SIDE_BUY:
                     buy_count += 1
-                    if order.get_distance(last_cmp) > 1000:
-                        orders_to_balance.append(order)
+                    if order.get_distance(last_cmp) > 200:
+                        orders.append(order)
                 elif order.k_side == k_binance.SIDE_SELL:
                     sell_count += 1
-                    if order.get_distance(last_cmp) > 1000:
-                        orders_to_balance.append(order)
+                    if order.get_distance(last_cmp) > 200:
+                        orders.append(order)
 
         # concentration only if at least 3 orders in one single side with d>150
-        if buy_count == 0 and len(orders_to_balance) > 2:
-            return orders_to_balance
-        elif sell_count == 0 and len(orders_to_balance) > 2:
-            return orders_to_balance
-        return []
+        if buy_count == 0 and len(orders) > 2:
+            orders_to_balance.extend(orders)
+        elif sell_count == 0 and len(orders) > 2:
+            orders_to_balance.extend(orders)
+
+        if len(orders_to_balance) > 1:
+            for order in orders_to_balance:
+                print(f'order to side balance: {order}')
+
+        if len(orders_to_balance) > 0:
+            if self.cm.concentrate_orders(
+                    orders=orders_to_balance,
+                    ref_mp=last_cmp,
+                    ref_gap=100,  # TODO: to parameter
+                    ):
+                # decrease only if compensation Ok
+                # TODO: correct it
+                trades_to_new_pt_delta += len(orders_to_balance) - 2 - child_count
+                log.info('SIDE BALANCE OK')
+            else:
+                log.critical('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+                for order in orders_to_balance:
+                    log.critical(f'SIDE BALANCE failed for concentration reasons!!! {order}')
+
+        return trades_to_new_pt_delta
