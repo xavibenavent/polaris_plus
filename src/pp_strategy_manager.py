@@ -91,23 +91,24 @@ class StrategyManager:
         return trades_to_new_pt_delta
 
 
-    def assess_concentration(self, last_cmp: float, check_orders: List[Order]) -> List[Order]:
-        sell_count = 0
-        buy_count = 0
-        orders_to_concentrate: List[Order] = []
-        # get number of orders for each side with distance > K_DISTANCE_FOR_CONCENTRATION
-        for order in check_orders:
-            if order.k_side == k_binance.SIDE_BUY and order.get_distance(last_cmp) > K_DISTANCE_FOR_CONCENTRATION:
-                buy_count += 1
-                orders_to_concentrate.append(order)
-            elif order.k_side == k_binance.SIDE_SELL and order.get_distance(last_cmp) > K_DISTANCE_FOR_CONCENTRATION:
-                sell_count += 1
-                orders_to_concentrate.append(order)
-
-        # concentration only if orders in both sides
-        if buy_count > 0 and sell_count > 0:
-            return orders_to_concentrate
-        return []
+    def assess_concentration(self, last_cmp: float) -> float:
+        # sell_count = 0
+        # buy_count = 0
+        # orders_to_concentrate: List[Order] = []
+        # # get number of orders for each side with distance > K_DISTANCE_FOR_CONCENTRATION
+        # for order in check_orders:
+        #     if order.k_side == k_binance.SIDE_BUY and order.get_distance(last_cmp) > K_DISTANCE_FOR_CONCENTRATION:
+        #         buy_count += 1
+        #         orders_to_concentrate.append(order)
+        #     elif order.k_side == k_binance.SIDE_SELL and order.get_distance(last_cmp) > K_DISTANCE_FOR_CONCENTRATION:
+        #         sell_count += 1
+        #         orders_to_concentrate.append(order)
+        #
+        # # concentration only if orders in both sides
+        # if buy_count > 0 and sell_count > 0:
+        #     return orders_to_concentrate
+        # return []
+        pass
 
     def check_side_balance(self, last_cmp: float) -> float:
         trades_to_new_pt_delta = 0  # return value
@@ -118,7 +119,7 @@ class StrategyManager:
         child_count = 0
         # get number of orders for each side with distance > K_DISTANCE_FOR_CONCENTRATION
         for order in self.pob.monitor:
-            if order.concentration_count == 0:
+            if order.concentration_count == 0:  # check it
                 if order.k_side == k_binance.SIDE_BUY:
                     buy_count += 1
                     if order.get_distance(last_cmp) > 200:
@@ -133,10 +134,6 @@ class StrategyManager:
             orders_to_balance.extend(orders)
         elif sell_count == 0 and len(orders) > 2:
             orders_to_balance.extend(orders)
-
-        if len(orders_to_balance) > 1:
-            for order in orders_to_balance:
-                print(f'order to side balance: {order}')
 
         if len(orders_to_balance) > 0:
             if self.cm.concentrate_orders(
