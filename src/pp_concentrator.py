@@ -1,5 +1,4 @@
 # pp_concentrator.py
-
 from typing import List
 import logging
 from binance import enums as k_binance
@@ -134,7 +133,8 @@ class ConcentratorManager:
 
             return True
 
-    def split_n_order(self, order: Order, inter_distance: float, child_count: int):
+    def split_n_order(self, order: Order, inter_distance: float, child_count: int) -> List[Order]:
+        new_orders = []
         # calculate new amount
         new_amount = order.amount / child_count
 
@@ -167,5 +167,98 @@ class ConcentratorManager:
             # add to monitor and pending_orders table
             self.pob.monitor.append(new_order)
 
+            # add to return list
+            new_orders.append(new_order)
+
         # delete original order from orders book
         self.pob.monitor.remove(order)
+
+        return new_orders
+
+    def split_for_partial_placement(self, order: Order) -> List[Order]:
+        # split into 2 orders with amount proportional to ratio
+        new_orders = self.split_n_order(order=order, inter_distance=0.0, child_count=2)
+        return new_orders
+
+    def concentrate_for_liquidity(self, order: Order, ref_mp: float, ref_gap: float) -> bool:
+        """concentration does not include n-split
+        :param order: order to concentrate
+        :param ref_mp: market price to concentrate to
+        :param ref_gap: concentration gap
+        :return: True if concentration is successful
+        """
+
+        # get equivalent amount and total
+        amount, total, _, _ = BalanceManager.get_balance_for_list([order])
+
+        # get equivalent pair b1-s1
+        s1_p, b1_p, s1_qty, b1_qty = get_compensation(
+            cmp=ref_mp,
+            gap=ref_gap,
+            qty_bal=amount,
+            price_bal=total,
+            buy_fee=self.buy_fee,
+            sell_fee=self.sell_fee
+        )
+
+        # validate values received for b1 and s1
+        if s1_p < 0 or b1_p < 0 or s1_qty < 0 or b1_qty < 0:
+            log.critical(f'!!!!!!!!!! negative value(s) after compensation: b1p: {b1_p} - b1q: {b1_qty} !!!!!!!!!!'
+                         f'- s1p: {s1_p} - s1q: {s1_qty}')
+            return False
+        else:
+
+            # increment counter and save mapping between count and pt_ids
+            # at this point the concentration is sure and will return True
+            self.concentrator_count += 1
+
+            # create both orders
+            session_id = order.session_id  # same session_id
+            b1 = Order(
+                session_id=session_id,
+                order_id='CONCENTRATED',
+                pt_id=order.pt_id,
+                k_side=k_binance.SIDE_BUY,
+                price=b1_p,
+                amount=b1_qty,
+                status=OrderStatus.MONITOR,
+                uid=Order.get_new_uid(),
+                name='con-b1'
+            )
+            s1 = Order(
+                session_id=session_id,
+                order_id='CONCENTRATED',
+                pt_id=order.pt_id,
+                k_side=k_binance.SIDE_SELL,
+                price=s1_p,
+                amount=s1_qty,
+                status=OrderStatus.MONITOR,
+                uid=Order.get_new_uid(),
+                name='con-s1'
+            )
+
+            # add new orders to appropriate list
+            self.pob.monitor.append(b1)
+            self.pob.monitor.append(s1)
+
+            # delete original order from list
+            self.pob.monitor.remove(order)
+
+            # log
+            print(f'concentrated order: {order}')
+            log.info(f'initial order:  {order}')
+            log.info(f'concentration count: {order.concentration_count}')
+            log.info(f'compensated b1: {b1}')
+            log.info(f'compensated s1: {s1}')
+
+            # update concentrated variables and inverse counter
+            b1.concentration_count = 1
+            s1.concentration_count = 1
+
+            # update variables
+            b1.compensation_count = 0
+            b1.split_count = 0
+            s1.compensation_count = 0
+            s1.split_count = 0
+
+            return True

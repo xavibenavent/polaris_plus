@@ -10,8 +10,8 @@ import threading
 from src.pp_account_balance import AssetBalance, AccountBalance
 
 log = logging.getLogger('log')
-K_INITIAL_EUR = 12_000.0
-K_INITIAL_BTC = 0.3
+K_INITIAL_EUR = 3_000.0  # 12_000.0
+K_INITIAL_BTC = 0.05  # 0.3
 K_INITIAL_BNB = 50.0
 
 K_FEE = 0.0008
@@ -20,7 +20,7 @@ K_BNBEUR = 350.0
 
 K_INITIAL_CMP = 45_000.0
 
-K_UPDATE_RATE = 0.05  # secs
+K_UPDATE_RATE = 0.5  # secs
 
 
 class FakeCmpMode(Enum):

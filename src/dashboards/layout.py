@@ -3,7 +3,6 @@
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
-from dash_daq.LEDDisplay import LEDDisplay
 
 import src.dashboards.dashboard_aux as daux
 
@@ -12,43 +11,55 @@ import src.dashboards.dashboard_aux as daux
 def get_layout(interval: float):
     layout = html.Div([
         dbc.Row([
-            dbc.Col(html.H1("Session dashboard", style={'text-align': 'center'}))
+            dbc.Col(html.H1("Session dashboard", style={'text-align': 'center'})),
         ]),
         dbc.Row([
-            # ********** balance Tanks **********
+            dbc.Button('STOP SIMULATION', id='new-pt-button', color='success', block=True),
+            html.Span(id="example-output", style={"vertical-align": "middle"}),
+            html.Br(),
+        ]),
+        dbc.Row([
+            # ********** balance bar charts **********
             dbc.Col(
-                children=daux.get_tank(tank_id='daq-tank-btc', tank_max=0.4, label='BTC (free)'),
+                dcc.Graph(id='btc-balance-chart'),
                 width={'size': 1, 'offset': 0},
             ),
             dbc.Col(
-                children=daux.get_tank(tank_id='daq-tank-eur', tank_max=20_000.0, label='EUR (free)'),
+                dcc.Graph(id='eur-balance-chart'),
                 width={'size': 1, 'offset': 0}
             ),
             dbc.Col(
-                children=daux.get_tank(tank_id='daq-tank-bnb', tank_max=50.0, label='BNB (free)', show_value=True),
+                dcc.Graph(id='bnb-balance-chart'),
                 width={'size': 1, 'offset': 0}
             ),
             # ********** monitoring LEDs **********
             dbc.Col(
                 children=[
-                    LEDDisplay(id='trades-to-new-pt', label='trades to new pt', value='0', color='SeaGreen'),
-                    LEDDisplay(id='traded-balance', label='traded orders balance', value='0',
-                               color='SeaGreen'),
-                    LEDDisplay(id='traded-price-balance', label='traded price balance', value='0',
-                               color='DarkSeaGreen'),
-                    LEDDisplay(id='cycle-count-from-last', label='cycles count from last traded order', value='0',
-                               color='SeaGreen'),
-                    html.Br(),
-                    dbc.Button('STOP SIMULATION', id='new-pt-button', color='success', block=True),
-                    html.Span(id="example-output", style={"vertical-align": "middle"})
+                    daux.get_led_display(led_id='cycle-count', led_label='from start'),
+                    daux.get_led_display(led_id='cycle-count-from-last', led_label='from last trade'),
+                    daux.get_led_display(led_id='trades-to-new-pt', led_label='trades to new pt'),
+                    daux.get_led_display(led_id='traded-balance', led_label='balance [satoshi]'),
+                    daux.get_led_display(led_id='traded-price-balance', led_label='balance [eur]'),
+                    daux.get_led_display(led_id='completed-pt-count', led_label='completed pt'),
+                    daux.get_led_display(led_id='pending-pt-count', led_label='pending pt'),
                 ],
-                width={'size': 2, 'offset': 1},
+                width={'size': 2, 'offset': 0},
             ),
-            # ********** completed pt balance **********
+            # ********** symbol lone graph **********
             dbc.Col([
-                dcc.Graph(id='completed-pt-balance-chart'),
-            ], width={'size': 6})
+                dcc.Graph(
+                    id='indicator-graph',
+                    figure={},
+                    config={'displayModeBar': False}
+                ),
+                dcc.Graph(id='daily-line', figure={}, config={'displayModeBar': False}),
+            ], width={'size': 2}),
+            # ********** concentration for different gaps (100, 200, ..., 500) **********
+            dbc.Col([
+                dcc.Graph(id='kpi-bar-chart'),
+            ], width={'size': 5})
         ]),
+        # ********** order tables (pending & traded) **********
         dbc.Row([
             dbc.Col(
                 children=daux.get_pending_datatable(
@@ -69,22 +80,8 @@ def get_layout(interval: float):
             ),
         ]),
         dbc.Row([
-            dbc.Col([
-                dcc.Graph(id='kpi-bar-chart'),
-            ], width={'size': 9})
         ]),
-        dbc.Row([
-            dbc.Col([
-                dcc.Graph(id='pt-group-chart', figure={}),
-                dcc.Graph(
-                    id='indicator-graph',
-                    figure={},
-                    config={'displayModeBar': False}
-                ),
-                dcc.Graph(id='daily-line', figure={}, config={'displayModeBar': False}),
-            ]),
-        ]),
-        # component to update the app every n seconds
+        # ********** interval **********
         dcc.Interval(id='update', n_intervals=0, interval=1000 * interval)
     ])
     return layout

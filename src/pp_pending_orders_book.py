@@ -4,6 +4,7 @@ import pandas as pd
 import logging
 from typing import List
 from enum import Enum
+from binance import enums as k_binance
 
 from src.pp_order import Order, OrderStatus
 from src.xb_pt_calculator import get_compensation
@@ -54,8 +55,26 @@ class PendingOrdersBook:
     def get_monitor_orders(self) -> List[Order]:
         return self.monitor
 
+    def get_monitor_sorted_by_momentum(self, cmp: float) -> List[Order]:
+        return sorted(self.monitor, key=lambda x: x.get_momentum(cmp=cmp), reverse=True)
+
     def get_pending_orders(self) -> List[Order]:
         return self.monitor + self.placed
+
+    def is_one_side(self) -> (bool, str):
+        buy_count = 0
+        sell_count = 0
+        for order in self.monitor + self.placed:
+            if order.k_side == k_binance.SIDE_BUY:
+                buy_count += 1
+            else:
+                sell_count += 1
+        if buy_count == 0 and sell_count > 0:
+            return True, k_binance.SIDE_SELL
+        elif buy_count > 0 and sell_count == 0:
+            return True, k_binance.SIDE_BUY
+        else:
+            return False, ''
 
     def get_pending_pt_id(self) -> List[str]:
         # return the list of pt_id not completed
@@ -80,6 +99,12 @@ class PendingOrdersBook:
     def count(self) -> int:
         return len(self.monitor)
 
+    def set_order_amount_by_uid(self, amount: float, uid: str):
+        for order in self.monitor:
+            if order.uid == uid:
+                order.amount = amount
+                break
+
     # ********* pandas methods **********
     def show_orders_graph(self):
         pass
@@ -99,7 +124,7 @@ class PendingOrdersBook:
         pending_orders = self.monitor + self.placed  # check it
         # filter orders by distance
         for order in pending_orders:
-            if order.get_distance(cmp=cmp) < 250:
+            if order.get_distance(cmp=cmp) < 50:
                 pending_orders.remove(order)
         # get equivalent balance
         amount, total = PendingOrdersBook.get_balance_for_list(orders=pending_orders)

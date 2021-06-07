@@ -4,9 +4,11 @@ from typing import List
 import pandas as pd
 import plotly.express as px
 from plotly.graph_objects import Figure, Indicator
-from dash_daq.Tank import Tank
+from dash_daq.LEDDisplay import LEDDisplay
 from dash_table import DataTable
 from dash_table.Format import Format, Scheme
+from dash_bootstrap_components import Row, Col
+from dash_html_components import P as p_text
 
 
 # ********** dashboard app.callback functions **********
@@ -39,19 +41,54 @@ def get_bar_chart(df: pd.DataFrame) -> Figure:
     return fig
 
 
-def get_completed_pt_chart(df: pd.DataFrame) -> Figure:
-    dfc = df.copy()  # to avoid warning in console
-    dfc['btc_net_balance'] = (dfc.signed_amount - dfc.btc_commission) * 1e8
-    df1 = dfc.groupby('pt_id', as_index=False).agg({'btc_net_balance': 'sum'})
+def get_balance_bar_chart(df: pd.DataFrame, asset: str, y_max: float) -> Figure:
     fig = px.bar(
-        data_frame=df1,
-        x='pt_id',
-        y='btc_net_balance',
-        color='btc_net_balance',
-        color_continuous_scale=px.colors.sequential.Greens
+        df,
+        x='asset',
+        y='amount',
+        text='amount',
+        color='type',
+        barmode='stack',
+        range_y=[0, y_max],
+        width=220,
+        height=350
     )
-    fig.update_xaxes(categoryorder='category ascending')
+    fig.update_layout(showlegend=False)  # , transition_duration=300)
+    # fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
+    fig.update_traces(marker_color='rgb(158,202,225)', marker_line_color='rgb(8,48,107)',
+                      marker_line_width=1.5, opacity=0.6, textfont_size=16)
+    if asset == 'eur':
+        fig.update_traces(texttemplate='%{y:,.2f}')
+    else:
+        fig.update_traces(texttemplate='%{y:,.6f}')
+    fig.update_layout(plot_bgcolor='#fff', margin_l=0)
     return fig
+
+
+def get_led_display(led_id: str, led_label: str) -> Row:
+    value = 0.0
+    layout = Row([
+        Col([p_text(children=led_label, className='led-text', style={'line-height': '2.3'})]),
+        Col([LEDDisplay(id=led_id, className='led-display', value=f'{value:06.0f}', color='SeaGreen', size=20)])
+    ], style={'text-align': 'right'})
+    return layout
+
+
+# def get_completed_pt_chart(df: pd.DataFrame) -> Figure:
+#     dfc = df.copy()  # to avoid warning in console
+#     dfc['btc_net_balance'] = (dfc.signed_amount - dfc.btc_commission) * 1e8
+#     df1 = dfc.groupby('pt_id', as_index=False).agg({'btc_net_balance': 'sum'})
+#     fig = px.bar(
+#         data_frame=df1,
+#         x='pt_id',
+#         y='btc_net_balance',
+#         color='btc_net_balance',
+#         color_continuous_scale=px.colors.sequential.Greens,
+#         height=350
+#     )
+#     fig.update_xaxes(categoryorder='category ascending')
+#     return fig
 
 
 def get_completed_pt_balance(df: pd.DataFrame) -> (float, float):
@@ -118,7 +155,7 @@ def get_cmp_line_chart(df: pd.DataFrame, cmps: List[float]) -> Figure:
             showgrid=False,
             showticklabels=True
         ),
-        height=150,
+        height=200,
         width=500
     )
     # color green or red depending on difference between last cmp and first cmp
@@ -157,21 +194,6 @@ def get_depth_span_line_chart(df: pd.DataFrame) -> Figure:
         # width=500
     )
     return fig
-
-
-def get_tank(tank_id: str, tank_max: float, label: str, show_value: bool = False):
-    tank = Tank(
-        id=tank_id,
-        min=0.0,
-        max=tank_max,
-        value=tank_max,
-        style={'margin-left': '50px', 'font-size': '10px'},
-        label=label,
-        labelPosition='bottom',
-        showCurrentValue=show_value
-        # color='#34f533'
-    )
-    return tank
 
 
 def get_datatable(table_id: str,

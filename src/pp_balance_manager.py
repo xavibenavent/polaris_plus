@@ -7,8 +7,12 @@ from src.pp_account_balance import AccountBalance
 from src.pp_market import Market
 from src.pp_order import Order
 
-B_TOTAL_BUFFER = 2000.0  # remaining guaranteed EUR balance
-B_AMOUNT_BUFFER = 0.04  # remaining guaranteed BTC balance
+EUR_MIN_BALANCE = 1000.0  # 2000.0  # remaining guaranteed EUR balance
+BTC_MIN_BALANCE = 0.02  # 0.04  # remaining guaranteed BTC balance
+
+# below _MIN_BALANCE + BUFFER some liquidity will be forced
+EUR_BUFFER = 1000.0
+BTC_BUFFER = 0.02
 
 
 class BalanceManager:
@@ -20,12 +24,17 @@ class BalanceManager:
         self.current_ab = self.get_account_balance(tag='current')
         self.net_ab = self.current_ab - self.initial_ab
 
-        # self.balance_total_needed = False
-        # self.balance_amount_needed = False
-
     def update_current(self, last_ab: AccountBalance) -> None:
         self.current_ab = last_ab
         self.net_ab = last_ab - self.initial_ab
+
+    def is_s2_below_buffer(self):
+        buffer = EUR_BUFFER + EUR_MIN_BALANCE
+        return self.current_ab.s2.get_total() < buffer  # total = free + locked
+
+    def is_s1_below_buffer(self):
+        buffer = BTC_BUFFER + BTC_MIN_BALANCE
+        return self.current_ab.s1.get_total() < buffer
 
     def get_account_balance(self, tag='') -> AccountBalance:
         btc_bal = self.market.get_asset_balance(asset='BTC', tag=tag)
@@ -37,28 +46,18 @@ class BalanceManager:
     def is_balance_enough(self, order: Order) -> (bool, float):
         # if not enough balance, it returns False and the balance needed
         is_balance_enough = False
-        balance_needed = 0.0
-        balance_amount_needed = False
-        balance_total_needed = False
-        # compare allowance with needed depending on the order side
         if order.k_side == k_binance.SIDE_BUY:
             balance_allowance = self.current_ab.get_free_price_s2()
-            balance_needed = order.get_total()
-            if (balance_allowance - balance_needed) > B_TOTAL_BUFFER:
+            available_liquidity = balance_allowance - EUR_MIN_BALANCE  # [EUR]
+            if (available_liquidity - order.get_total()) > 0:
                 is_balance_enough = True
-            else:
-                # eur needed => SELL
-                balance_total_needed = True
-        else:
+        else:  # SIDE_SELL
             balance_allowance = self.current_ab.get_free_amount_s1()
-            balance_needed = order.amount
-            if (balance_allowance - balance_needed) > B_AMOUNT_BUFFER:
+            available_liquidity = balance_allowance - BTC_MIN_BALANCE  # [BTC]
+            if (available_liquidity - order.amount) > 0:
                 is_balance_enough = True
-            else:
-                # btc needed => BUY
-                balance_amount_needed = True
 
-        return is_balance_enough, balance_needed  # in fact the balance needed will be less
+        return is_balance_enough
 
     @staticmethod
     def get_balance_for_list(orders: List[Order]) -> (float, float, float, float):

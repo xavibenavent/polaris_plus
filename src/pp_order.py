@@ -70,10 +70,11 @@ class Order:
         else:
             self.uid = uid
 
-        log.info(f'** ORDER CREATED ++ {self}')
+        # log.info(f'** ORDER CREATED ++ {self}')
 
     def __del__(self):
-        log.info(f'** ORDER DESTROYED {self}')
+        # log.info(f'** ORDER DESTROYED {self}')
+        pass
 
     @staticmethod
     def get_new_uid() -> str:
@@ -114,6 +115,9 @@ class Order:
 
     def get_signed_total(self) -> float:
         return - (self.price * self.get_signed_amount())
+
+    def get_momentum(self, cmp: float):
+        return abs(self.amount * (cmp - self.price))
 
     def set_bnb_commission(self, commission: float, bnbbtc_rate: float) -> None:
         self.bnb_commission = commission

@@ -6,6 +6,7 @@ from binance import enums as k_binance
 from src.pp_order import Order
 from src.pp_pending_orders_book import PendingOrdersBook
 from src.pp_concentrator import ConcentratorManager
+from src.pp_balance_manager import BalanceManager
 
 log = logging.getLogger('log')
 
@@ -31,13 +32,25 @@ PT_SELL_FEE = 0.08 / 100
 class StrategyManager:
     def __init__(self,
                  pob: PendingOrdersBook,
-                 cm: ConcentratorManager):
+                 cm: ConcentratorManager,
+                 bm: BalanceManager):
         self.pob = pob
         self.cm = cm
+        self.bm = bm
 
     def assess_strategy_actions(self, cmp: float) -> int:
         # main strategy
         trades_to_new_pt_delta = 0
+
+        # # 0. asses balance needed
+        # if self.bm.is_s1_below_buffer():
+        #     # force BUY
+        #     self._force_buy(cmp=cmp)
+        #     pass
+        # elif self.bm.is_s2_below_buffer():
+        #     # force SELL
+        #     self._force_sell(cmp=cmp)
+        #     pass
 
         # 1. assess n-child in monitor list
         # trades_to_new_pt_delta += self.check_monitor_list_for_n_child(cmp=cmp)
@@ -49,10 +62,38 @@ class StrategyManager:
         # TODO: implement it
 
         # 4. assess isolated side orders to balance
-        # TODO: implement it
-        trades_to_new_pt_delta += self.check_side_balance(last_cmp=cmp)
+        # trades_to_new_pt_delta += self.check_side_balance(last_cmp=cmp)
 
         return trades_to_new_pt_delta
+
+    def force_buy(self, cmp: float):
+        # order monitor by price from higher to lower
+        sorted_orders = sorted(self.pob.monitor, key=lambda x: x.price, reverse=True)
+        for order in sorted_orders:
+                print(order)
+        # get lower
+        lower_order = sorted_orders[-1]
+        # concentrate it
+        self.cm.concentrate_for_liquidity(order=lower_order, ref_mp=cmp + 110, ref_gap=100)
+
+    def force_sell(self, cmp: float):
+        # order monitor by price, from higher to lower
+        sorted_orders = sorted(self.pob.monitor, key=lambda x: x.price, reverse=True)
+        print(sorted_orders)
+        # get lower
+        higher_order = sorted_orders[0]
+        # concentrate it
+        self.cm.concentrate_for_liquidity(order=higher_order, ref_mp=cmp - 110, ref_gap=100)
+
+    def _get_liquidity(self, cmp: float):
+        # check whether there are orders in both sides or not
+        is_one_side, side = self.pob.is_one_side()
+        if is_one_side:
+            pass
+            # compensate the farthest order
+        else:
+            # select orders to concentrate based on momentum
+            sorted_by_momentum = self.pob.get_monitor_sorted_by_momentum(cmp=cmp)
 
     def check_monitor_list_for_compensation(self, cmp: float) -> int:
         trades_to_new_pt_delta = 0

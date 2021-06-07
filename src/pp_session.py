@@ -78,7 +78,7 @@ class Session:
 
         self.cm = ConcentratorManager(pob=self.pob, tob=self.tob)
 
-        self.sm = StrategyManager(pob=self.pob, cm=self.cm)
+        self.sm = StrategyManager(pob=self.pob, cm=self.cm, bm=self.bm)
 
         # *********** concentrator **********
 
@@ -155,34 +155,22 @@ class Session:
         # 4. loop through monitoring orders and place to Binance when appropriate
         self.check_monitor_list_for_placing(cmp=cmp)
 
-        # 5. check inactivity
-        if self.cycles_from_last_trade > 125:  # TODO: magic number (5')
-            # create new pt
-            self.create_new_pt(cmp=cmp)  # direct to create_new_pt(), not to assess_new_pt()
-            self.cycles_from_last_trade = 0  # equivalent to trading but without a trade
+        # 5. check inactivity & liquidity
+        self.check_inactivity(cmp=cmp)
 
-        # # 6. check span reduction (concentration)
-        # orders_to_concentrate = self.sm.assess_concentration(
-        #     last_cmp=cmp,
-        #     check_orders=self.orders_book.monitor)
-        #
-        # if len(orders_to_concentrate) > 0:
-        #     if self.orders_book.concentrate_list(
-        #             orders=orders_to_concentrate,
-        #             traded_book=self.traded_book,
-        #             ref_mp=cmp,
-        #             ref_gap=K_GAP_CONCENTRATION,
-        #             n_for_split=2,
-        #             interdistance_after_concentration=K_INTERDISTANCE_AFTER_CONCENTRATION,
-        #             buy_fee=PT_BUY_FEE,
-        #             sell_fee=PT_SELL_FEE):
-        #         # decrease only if compensation Ok
-        #         self.partial_traded_orders_count += len(orders_to_concentrate) - 2
-        #         log.info('CONCENTRATION OK')
-        #     else:
-        #         log.critical('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-        #         for order in orders_to_concentrate:
-        #             log.critical(f'CONCENTRATION failed for concentration reasons!!! {order}')
+    def check_inactivity(self, cmp):
+        if self.cycles_from_last_trade > 125:  # TODO: magic number (5')
+            if self.bm.is_s1_below_buffer():
+                # force BUY
+                self.sm.force_buy(cmp=cmp)
+            elif self.bm.is_s2_below_buffer():
+                # force SELL
+                self.sm.force_sell(cmp=cmp)
+            else:
+                # create new pt
+                self.create_new_pt(cmp=cmp)  # direct to create_new_pt(), not to assess_new_pt()
+
+            self.cycles_from_last_trade = 0  # equivalent to trading but without a trade
 
     def check_placed_list_for_move_back(self, cmp: float):
         for order in self.pob.placed:
@@ -193,35 +181,37 @@ class Session:
 
     def check_monitor_list_for_placing(self, cmp: float):
         new_placement_allowed = True
-        for order in self.pob.monitor:
+        sorted_orders = sorted(self.pob.monitor, key=lambda x: x.get_abs_distance(cmp=cmp))
+        for order in sorted_orders:
             order.cycles_count += 1
             if new_placement_allowed and order.is_ready_for_placement(
                     cmp=cmp,
                     min_dist=K_MINIMUM_DISTANCE_FOR_PLACEMENT):
                 # check balance
-                is_balance_enough, balance_needed = self.bm.is_balance_enough(order=order)
-                if is_balance_enough:
-                    self.pob.place_order(order=order)
-                    is_order_placed, new_status = self.place_order(order=order)
-                    if is_order_placed:
-                        # 2. placed: (s: PLACED, t: pending_orders, l: placed)
-                        order.set_status(status=OrderStatus.PLACED)
-                        # to control one new placement per cycle mode
-                        if K_ONE_PLACE_PER_CYCLE_MODE:
-                            new_placement_allowed = False
+                if self.bm.is_balance_enough(order=order):
+                    new_placement_allowed = self._process_place_order(order=order)
 
-                    else:
-                        self.pob.place_back_order(order=order)
-                        log.critical(f'for unknown reason the order has not been placed: {order}')
-                # else:
-                #     self.release_balance(balance_needed=balance_needed)
-                # log.critical(f'balance is not enough for placing {order}')
+    def _process_place_order(self, order: Order) -> bool:
+        new_placement_allowed = True
+        self.pob.place_order(order=order)
+        is_order_placed, new_status = self._place_order(order=order)
+        if is_order_placed:
+            # 2. placed: (s: PLACED, t: pending_orders, l: placed)
+            order.set_status(status=OrderStatus.PLACED)
+            # to control one new placement per cycle mode
+            if K_ONE_PLACE_PER_CYCLE_MODE:
+                new_placement_allowed = False
+        else:
+            self.pob.place_back_order(order=order)
+            log.critical(f'for unknown reason the order has not been placed: {order}')
+        return new_placement_allowed
 
     def order_traded_callback(self, uid: str, order_price: float, bnb_commission: float) -> None:
         print(f'********** ORDER TRADED:    price: {order_price} [EUR] - commission: {bnb_commission} [BNB]')
         # get the order by uid
         for order in self.pob.placed:
             if order.uid == uid:
+                print(f'********** order traded: {order}')
                 # set the cycle in which the order has been traded
                 order.traded_cycle = self.cmp_count
                 # reset counter
@@ -262,7 +252,7 @@ class Session:
         self.bm.update_current(last_ab=ab)
 
     # ********** check methods **********
-    def place_order(self, order) -> (bool, Optional[str]):
+    def _place_order(self, order) -> (bool, Optional[str]):
         order_placed = False
         status_received = None
         # place order
