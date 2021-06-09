@@ -70,7 +70,7 @@ class StrategyManager:
         # order monitor by price from higher to lower
         sorted_orders = sorted(self.pob.monitor, key=lambda x: x.price, reverse=True)
         for order in sorted_orders:
-                print(order)
+            print(order)
         # get lower
         lower_order = sorted_orders[-1]
         # concentrate it
